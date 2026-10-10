@@ -1,3 +1,4 @@
+ HEAD
 # Smart PHC — Medicine Stock Prediction & Early Warning System
 
 A healthcare supply-chain decision-support system for Primary Health Centres (PHCs) featuring **predictive stock monitoring**, **early warnings**, **distance-aware surplus matching**, **authorized emergency transfers**, and **public medicine availability searches**.
@@ -205,3 +206,6 @@ git add .
 git commit -m "Complete Smart PHC medicine stock prediction and early warning system"
 git push origin main
 ```
+# smart-phc-medicine-system
+Smart PHC Medicine Stock Prediction and Early Warning System
+ origin/main
