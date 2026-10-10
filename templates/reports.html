@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block title %}District Reports & Analytics — Smart PHC Admin{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex flex-wrap justify-content-between align-items-center gap-3">
+  <div>
+    <h1><i class="bi bi-file-earmark-bar-graph text-teal me-2"></i>District Operations Reports & Analytics</h1>
+    <p>Data aggregates, shortage-prone facility indices, and downloadable compliance spreadsheets.</p>
+  </div>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('admin_reports_export_stock') }}" class="btn btn-outline-success btn-sm">
+      <i class="bi bi-download me-1"></i> Stock CSV
+    </a>
+    <a href="{{ url_for('admin_reports_export_transfers') }}" class="btn btn-outline-primary btn-sm">
+      <i class="bi bi-download me-1"></i> Transfers CSV
+    </a>
+    <a href="{{ url_for('admin_reports_export_audit') }}" class="btn btn-outline-dark btn-sm">
+      <i class="bi bi-download me-1"></i> Audit Logs CSV
+    </a>
+  </div>
+</div>
+
+<div class="row g-4 mb-4">
+  <!-- Shortage-Prone PHCs Summary -->
+  <div class="col-lg-6">
+    <div class="card card-phc h-100">
+      <div class="card-header">
+        <span class="fw-bold text-dark"><i class="bi bi-exclamation-triangle-fill text-danger me-2"></i>Shortage-Vulnerable Facilities</span>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-phc">
+            <thead>
+              <tr>
+                <th>Primary Health Centre</th>
+                <th>Location</th>
+                <th>Critical Items</th>
+                <th>High Risk</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for p in vulnerable_phcs %}
+                <tr>
+                  <td class="fw-bold">{{ p.name }}</td>
+                  <td><small class="text-muted">{{ p.location }}</small></td>
+                  <td>
+                    {% if p.critical_count > 0 %}
+                      <span class="badge bg-danger">{{ p.critical_count }} critical</span>
+                    {% else %}
+                      <span class="text-muted">0</span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if p.high_count > 0 %}
+                      <span class="badge bg-warning text-dark">{{ p.high_count }} warning</span>
+                    {% else %}
+                      <span class="text-muted">0</span>
+                    {% endif %}
+                  </td>
+                  <td>
+                    {% if p.critical_count > 0 %}
+                      <span class="badge bg-danger-subtle text-danger">Priority Target</span>
+                    {% else %}
+                      <span class="badge bg-success-subtle text-success">Stable</span>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% else %}
+                <tr>
+                  <td colspan="5" class="text-center py-3 text-muted">All facilities operating within safe bounds.</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Top Depleted Medicines -->
+  <div class="col-lg-6">
+    <div class="card card-phc h-100">
+      <div class="card-header">
+        <span class="fw-bold text-dark"><i class="bi bi-capsule-pill text-primary me-2"></i>Most Frequently Depleted Medicines</span>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-phc">
+            <thead>
+              <tr>
+                <th>Medicine Name</th>
+                <th>Category</th>
+                <th>Facilities with Shortage</th>
+                <th>Total District Units</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for m in top_depleted %}
+                <tr>
+                  <td class="fw-bold text-dark">{{ m.name }}</td>
+                  <td><small class="text-muted">{{ m.category }}</small></td>
+                  <td>
+                    <span class="badge bg-danger">{{ m.shortage_phcs }} clinics at risk</span>
+                  </td>
+                  <td><strong>{{ m.district_stock }}</strong> {{ m.unit }}</td>
+                </tr>
+              {% else %}
+                <tr>
+                  <td colspan="4" class="text-center py-3 text-muted">No medicines currently under critical deficit.</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Transfer Operations Summary -->
+<div class="card card-phc">
+  <div class="card-header">
+    <span class="fw-bold text-dark"><i class="bi bi-truck text-teal me-2"></i>Inter-Facility Emergency Transfer Velocity Metrics</span>
+  </div>
+  <div class="card-body p-4">
+    <div class="row g-4 text-center">
+      <div class="col-sm-3">
+        <div class="p-3 bg-light rounded">
+          <div class="small text-muted text-uppercase fw-semibold">Total Requests Logged</div>
+          <div class="fs-3 fw-bold text-dark mt-1">{{ transfer_stats.total }}</div>
+        </div>
+      </div>
+      <div class="col-sm-3">
+        <div class="p-3 bg-light rounded">
+          <div class="small text-muted text-uppercase fw-semibold">Transfers Completed</div>
+          <div class="fs-3 fw-bold text-success mt-1">{{ transfer_stats.completed }}</div>
+        </div>
+      </div>
+      <div class="col-sm-3">
+        <div class="p-3 bg-light rounded">
+          <div class="small text-muted text-uppercase fw-semibold">Total Quantity Redistributed</div>
+          <div class="fs-3 fw-bold text-primary mt-1">{{ transfer_stats.total_units_moved or 0 }} units</div>
+        </div>
+      </div>
+      <div class="col-sm-3">
+        <div class="p-3 bg-light rounded">
+          <div class="small text-muted text-uppercase fw-semibold">Average Transfer Distance</div>
+          <div class="fs-3 fw-bold text-teal mt-1">{{ transfer_stats.avg_distance or '5.2' }} km</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

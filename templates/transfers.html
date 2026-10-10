@@ -1,0 +1,216 @@
+{% extends "base.html" %}
+
+{% block title %}Emergency Stock Transfers — {{ phc.name }} | Smart PHC{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex flex-wrap justify-content-between align-items-center gap-3">
+  <div>
+    <h1><i class="bi bi-truck text-teal me-2"></i>Emergency Stock Transfer Operations</h1>
+    <p>Manage distance-aware inter-facility transfers, dispatch approved batches, and confirm receipts for <strong>{{ phc.name }}</strong>.</p>
+  </div>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('phc_inventory') }}" class="btn btn-outline-primary btn-sm">
+      <i class="bi bi-capsule me-1"></i> Inventory Manager
+    </a>
+  </div>
+</div>
+
+<!-- Outgoing Transfer Requests (This PHC Requested Stock to Alleviate Shortage) -->
+<div class="card card-phc mb-4">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center">
+    <span class="fw-bold text-dark">
+      <i class="bi bi-box-arrow-in-down-right text-danger me-2"></i>Outgoing Requests (Our PHC Receiving Stock)
+    </span>
+    <span class="badge bg-secondary">{{ outgoing_requests|length }} requests</span>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-phc">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Requested Medicine</th>
+            <th>Supplying PHC</th>
+            <th>Distance</th>
+            <th>Quantity (Req / Appr)</th>
+            <th>Status</th>
+            <th>Reason & Notes</th>
+            <th>Requested At</th>
+            <th class="text-end">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in outgoing_requests %}
+            <tr>
+              <td><code>#TR-{{ r.id }}</code></td>
+              <td>
+                <div class="fw-bold text-dark">{{ r.medicine_name }}</div>
+                <small class="text-muted">{{ r.dosage_form or r.unit }}</small>
+              </td>
+              <td>
+                <div class="fw-semibold text-primary">{{ r.supplying_phc_name }}</div>
+                <small class="text-muted">{{ r.supplying_location }}</small>
+              </td>
+              <td>
+                {% if r.distance_km is not none %}
+                  <span class="badge bg-light text-dark border">{{ r.distance_km }} km</span>
+                {% else %}
+                  <small class="text-muted">Unmapped</small>
+                {% endif %}
+              </td>
+              <td>
+                <strong>{{ r.requested_quantity }}</strong>
+                {% if r.approved_quantity is not none %}
+                  / <span class="text-success fw-bold">{{ r.approved_quantity }}</span>
+                {% else %}
+                  <span class="text-muted">/ —</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if r.status == 'pending' %}
+                  <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">Awaiting Admin Approval</span>
+                {% elif r.status == 'approved' %}
+                  <span class="badge bg-info-subtle text-info border border-info-subtle">Approved • Awaiting Dispatch</span>
+                {% elif r.status == 'dispatched' %}
+                  <span class="badge bg-primary-subtle text-primary border border-primary-subtle">Dispatched • In Transit</span>
+                {% elif r.status == 'received' %}
+                  <span class="badge bg-success-subtle text-success border border-success-subtle">Received & Added to Stock</span>
+                {% elif r.status == 'rejected' %}
+                  <span class="badge bg-danger-subtle text-danger border border-danger-subtle">Rejected</span>
+                {% endif %}
+              </td>
+              <td>
+                <div class="small text-muted" style="max-width: 280px;">
+                  <div>{{ r.reason }}</div>
+                  {% if r.admin_notes %}
+                    <div class="text-primary mt-1"><strong>Admin:</strong> {{ r.admin_notes }}</div>
+                  {% endif %}
+                </div>
+              </td>
+              <td><small class="text-muted">{{ r.created_at|format_dt }}</small></td>
+              <td class="text-end">
+                {% if r.status == 'dispatched' %}
+                  <!-- Confirm Physical Receipt -->
+                  <form action="{{ url_for('phc_transfer_receive', transfer_id=r.id) }}" method="POST" class="d-inline" data-confirm="Confirm physical receipt of {{ r.approved_quantity or r.requested_quantity }} units of {{ r.medicine_name }}? Inventory will update automatically.">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-sm btn-success fw-bold">
+                      <i class="bi bi-box-arrow-in-down me-1"></i> Confirm Receipt
+                    </button>
+                  </form>
+                {% elif r.status == 'received' %}
+                  <span class="text-success small fw-semibold"><i class="bi bi-check-circle-fill"></i> Completed</span>
+                {% elif r.status == 'pending' %}
+                  <span class="text-muted small">Under Review</span>
+                {% else %}
+                  <span class="text-muted small">{{ r.status|title }}</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% else %}
+            <tr>
+              <td colspan="9" class="text-center py-4 text-muted">
+                No outgoing transfer requests submitted yet. Use "Surplus Matches" in Inventory to initiate one.
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Incoming Transfer Requests (Other PHCs Requesting Stock from Us) -->
+<div class="card card-phc">
+  <div class="card-header bg-white d-flex justify-content-between align-items-center">
+    <span class="fw-bold text-dark">
+      <i class="bi bi-box-arrow-up-right text-success me-2"></i>Incoming Requests (Our PHC Supplying Stock)
+    </span>
+    <span class="badge bg-secondary">{{ incoming_requests|length }} requests</span>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-phc">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Medicine</th>
+            <th>Requesting Facility</th>
+            <th>Distance</th>
+            <th>Quantity (Req / Appr)</th>
+            <th>Status</th>
+            <th>Clinical Reason</th>
+            <th>Updated At</th>
+            <th class="text-end">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in incoming_requests %}
+            <tr>
+              <td><code>#TR-{{ r.id }}</code></td>
+              <td>
+                <div class="fw-bold text-dark">{{ r.medicine_name }}</div>
+                <small class="text-muted">{{ r.dosage_form or r.unit }}</small>
+              </td>
+              <td>
+                <div class="fw-semibold text-dark">{{ r.requesting_phc_name }}</div>
+                <small class="text-muted">{{ r.requesting_location }}</small>
+              </td>
+              <td>
+                {% if r.distance_km is not none %}
+                  <span class="badge bg-light text-dark border">{{ r.distance_km }} km</span>
+                {% else %}
+                  <small class="text-muted">Unmapped</small>
+                {% endif %}
+              </td>
+              <td>
+                <strong>{{ r.requested_quantity }}</strong>
+                {% if r.approved_quantity is not none %}
+                  / <span class="text-success fw-bold">{{ r.approved_quantity }}</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if r.status == 'pending' %}
+                  <span class="badge bg-warning-subtle text-warning-emphasis">Awaiting Admin Approval</span>
+                {% elif r.status == 'approved' %}
+                  <span class="badge bg-info-subtle text-info">Approved • Ready to Dispatch</span>
+                {% elif r.status == 'dispatched' %}
+                  <span class="badge bg-primary-subtle text-primary">Dispatched • En Route</span>
+                {% elif r.status == 'received' %}
+                  <span class="badge bg-success-subtle text-success">Delivered & Confirmed</span>
+                {% else %}
+                  <span class="badge bg-secondary-subtle text-secondary">{{ r.status }}</span>
+                {% endif %}
+              </td>
+              <td><small class="text-muted" style="max-width: 250px;">{{ r.reason }}</small></td>
+              <td><small class="text-muted">{{ r.updated_at|format_dt }}</small></td>
+              <td class="text-end">
+                {% if r.status == 'approved' %}
+                  <!-- Dispatch Stock Button -->
+                  <form action="{{ url_for('phc_transfer_dispatch', transfer_id=r.id) }}" method="POST" class="d-inline" data-confirm="Dispatch {{ r.approved_quantity or r.requested_quantity }} units of {{ r.medicine_name }} to {{ r.requesting_phc_name }}? Stock will be deducted immediately.">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-sm btn-primary fw-bold">
+                      <i class="bi bi-truck me-1"></i> Dispatch Stock
+                    </button>
+                  </form>
+                {% elif r.status == 'dispatched' %}
+                  <span class="badge bg-primary text-white"><i class="bi bi-clock me-1"></i> Dispatched</span>
+                {% elif r.status == 'received' %}
+                  <span class="text-success small fw-semibold"><i class="bi bi-check-all me-1"></i> Received by Clinic</span>
+                {% else %}
+                  <span class="text-muted small">Pending approval</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% else %}
+            <tr>
+              <td colspan="9" class="text-center py-4 text-muted">
+                No incoming transfer requests assigned to supply other health centres.
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

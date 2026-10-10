@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+
+{% block title %}Transfer Requests Governance — Smart PHC Admin{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex flex-wrap justify-content-between align-items-center gap-3">
+  <div>
+    <h1><i class="bi bi-arrow-left-right text-teal me-2"></i>Emergency Transfer Governance</h1>
+    <p>Administrative review, authorization, and dispatch verification for inter-facility medicine transfers.</p>
+  </div>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('admin_reports_export_transfers') }}" class="btn btn-outline-success btn-sm">
+      <i class="bi bi-file-earmark-spreadsheet me-1"></i> Export Transfers CSV
+    </a>
+  </div>
+</div>
+
+<!-- Filter Tabs -->
+<div class="card card-phc mb-4">
+  <div class="card-body p-3">
+    <div class="d-flex flex-wrap gap-2">
+      <a href="{{ url_for('admin_transfers') }}" class="btn btn-sm {% if not selected_status %}btn-dark{% else %}btn-outline-secondary{% endif %}">
+        All Transfers ({{ transfers|length }})
+      </a>
+      <a href="{{ url_for('admin_transfers', status='pending') }}" class="btn btn-sm {% if selected_status == 'pending' %}btn-warning text-dark{% else %}btn-outline-warning text-dark{% endif %}">
+        Pending Review
+      </a>
+      <a href="{{ url_for('admin_transfers', status='approved') }}" class="btn btn-sm {% if selected_status == 'approved' %}btn-info text-dark{% else %}btn-outline-info text-dark{% endif %}">
+        Approved / Awaiting Dispatch
+      </a>
+      <a href="{{ url_for('admin_transfers', status='dispatched') }}" class="btn btn-sm {% if selected_status == 'dispatched' %}btn-primary{% else %}btn-outline-primary{% endif %}">
+        Dispatched / In Transit
+      </a>
+      <a href="{{ url_for('admin_transfers', status='received') }}" class="btn btn-sm {% if selected_status == 'received' %}btn-success{% else %}btn-outline-success{% endif %}">
+        Completed Transfers
+      </a>
+    </div>
+  </div>
+</div>
+
+<!-- Transfers Table -->
+<div class="card card-phc shadow-sm">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-phc">
+        <thead>
+          <tr>
+            <th>Ref</th>
+            <th>Medicine</th>
+            <th>Requesting Clinic</th>
+            <th>Supplying Clinic</th>
+            <th>Distance</th>
+            <th>Quantity (Req / Appr)</th>
+            <th>Status</th>
+            <th>Clinical Justification & Notes</th>
+            <th>Date</th>
+            <th class="text-end">Administrative Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for t in transfers %}
+            <tr>
+              <td><code>#TR-{{ t.id }}</code></td>
+              <td>
+                <div class="fw-bold text-dark">{{ t.medicine_name }}</div>
+                <small class="text-muted">{{ t.dosage_form or t.unit }}</small>
+              </td>
+              <td>
+                <span class="text-danger fw-semibold">{{ t.requesting_phc_name }}</span>
+              </td>
+              <td>
+                <span class="text-success fw-semibold">{{ t.supplying_phc_name }}</span>
+              </td>
+              <td>
+                {% if t.distance_km is not none %}
+                  <span class="badge bg-light text-dark border">{{ t.distance_km }} km</span>
+                {% else %}
+                  <small class="text-muted">Unmapped</small>
+                {% endif %}
+              </td>
+              <td>
+                <strong>{{ t.requested_quantity }}</strong>
+                {% if t.approved_quantity is not none %}
+                  / <span class="text-success fw-bold">{{ t.approved_quantity }}</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if t.status == 'pending' %}
+                  <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">Awaiting Approval</span>
+                {% elif t.status == 'approved' %}
+                  <span class="badge bg-info-subtle text-info border border-info-subtle">Approved • Ready for Dispatch</span>
+                {% elif t.status == 'dispatched' %}
+                  <span class="badge bg-primary-subtle text-primary border border-primary-subtle">Dispatched • In Transit</span>
+                {% elif t.status == 'received' %}
+                  <span class="badge bg-success-subtle text-success border border-success-subtle">Received & Restocked</span>
+                {% elif t.status == 'rejected' %}
+                  <span class="badge bg-danger-subtle text-danger border border-danger-subtle">Rejected</span>
+                {% endif %}
+              </td>
+              <td>
+                <div class="small text-muted" style="max-width: 260px;">
+                  <div>{{ t.reason }}</div>
+                  {% if t.admin_notes %}
+                    <div class="text-primary mt-1"><strong>Admin Note:</strong> {{ t.admin_notes }}</div>
+                  {% endif %}
+                </div>
+              </td>
+              <td><small class="text-muted">{{ t.created_at|format_dt }}</small></td>
+              <td class="text-end">
+                {% if t.status == 'pending' %}
+                  <div class="btn-group btn-group-sm">
+                    <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#approveModal{{ t.id }}">
+                      <i class="bi bi-check-lg me-1"></i> Approve
+                    </button>
+                    <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#rejectModal{{ t.id }}">
+                      <i class="bi bi-x-lg me-1"></i> Reject
+                    </button>
+                  </div>
+
+                  <!-- Approve Modal -->
+                  <div class="modal fade text-start" id="approveModal{{ t.id }}" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog">
+                      <div class="modal-content">
+                        <form action="{{ url_for('admin_transfer_approve', transfer_id=t.id) }}" method="POST">
+                          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                          <div class="modal-header">
+                            <h5 class="modal-title fs-6 fw-bold">Authorize Emergency Transfer #TR-{{ t.id }}</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                          </div>
+                          <div class="modal-body">
+                            <div class="p-3 bg-light rounded mb-3 small">
+                              <div><strong>Medicine:</strong> {{ t.medicine_name }}</div>
+                              <div><strong>Requesting:</strong> {{ t.requesting_phc_name }}</div>
+                              <div><strong>Supplying:</strong> {{ t.supplying_phc_name }}</div>
+                              <div><strong>Distance:</strong> {{ t.distance_km }} km</div>
+                            </div>
+                            <div class="mb-3">
+                              <label class="form-label small fw-bold">Approved Transfer Quantity</label>
+                              <input type="number" class="form-control" name="approved_quantity" value="{{ t.requested_quantity }}" min="1" max="{{ t.requested_quantity }}" required>
+                              <div class="form-text">You may adjust authorized quantity based on supply priorities.</div>
+                            </div>
+                            <div class="mb-3">
+                              <label class="form-label small fw-bold">Administrative Directives / Notes</label>
+                              <textarea class="form-control" name="admin_notes" rows="2" placeholder="e.g. Distance-aware matching confirmed. Supplying clinic retains required safety buffer.">Approved by District Medical Officer. Supplying facility authorized for physical dispatch.</textarea>
+                            </div>
+                          </div>
+                          <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                            <button type="submit" class="btn btn-success btn-sm">Confirm Approval</button>
+                          </div>
+                        </form>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Reject Modal -->
+                  <div class="modal fade text-start" id="rejectModal{{ t.id }}" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog">
+                      <div class="modal-content">
+                        <form action="{{ url_for('admin_transfer_reject', transfer_id=t.id) }}" method="POST">
+                          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                          <div class="modal-header">
+                            <h5 class="modal-title fs-6 fw-bold">Reject Transfer Request #TR-{{ t.id }}</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                          </div>
+                          <div class="modal-body">
+                            <div class="mb-3">
+                              <label class="form-label small fw-bold">Reason for Rejection</label>
+                              <textarea class="form-control" name="admin_notes" rows="3" required placeholder="Specify why the transfer request was declined..."></textarea>
+                            </div>
+                          </div>
+                          <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                            <button type="submit" class="btn btn-danger btn-sm">Confirm Rejection</button>
+                          </div>
+                        </form>
+                      </div>
+                    </div>
+                  </div>
+                {% else %}
+                  <span class="text-muted small">{{ t.status|title }}</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% else %}
+            <tr>
+              <td colspan="10" class="text-center py-4 text-muted">No transfer records found matching the criteria.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

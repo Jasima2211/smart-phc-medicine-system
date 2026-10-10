@@ -1,0 +1,126 @@
+{% extends "base.html" %}
+
+{% block title %}District Stock Surveillance — Smart PHC Admin{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex flex-wrap justify-content-between align-items-center gap-3">
+  <div>
+    <h1><i class="bi bi-activity text-teal me-2"></i>District Stock Surveillance & Depletion Monitoring</h1>
+    <p>Comprehensive matrix of medicine inventory, consumption velocities, and shortage vulnerabilities across all health centres.</p>
+  </div>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('admin_reports_export_stock') }}" class="btn btn-outline-success btn-sm">
+      <i class="bi bi-file-earmark-spreadsheet me-1"></i> Export CSV
+    </a>
+  </div>
+</div>
+
+<!-- Filters & Search -->
+<div class="card card-phc mb-4">
+  <div class="card-body p-3">
+    <form action="{{ url_for('admin_stock_monitor') }}" method="GET" class="row g-2 align-items-center">
+      <div class="col-md-4">
+        <div class="input-group input-group-sm">
+          <span class="input-group-text bg-light"><i class="bi bi-search"></i></span>
+          <input type="text" id="tableSearchInput" data-target-table="stockMonitorTable" class="form-control" placeholder="Quick filter table...">
+        </div>
+      </div>
+      <div class="col-md-3">
+        <select name="phc_id" class="form-select form-select-sm" onchange="this.form.submit()">
+          <option value="">All Health Centres</option>
+          {% for p in all_phcs %}
+            <option value="{{ p.id }}" {% if selected_phc_id == p.id %}selected{% endif %}>{{ p.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-3">
+        <select name="medicine_id" class="form-select form-select-sm" onchange="this.form.submit()">
+          <option value="">All Catalog Medicines</option>
+          {% for m in all_medicines %}
+            <option value="{{ m.id }}" {% if selected_med_id == m.id %}selected{% endif %}>{{ m.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-md-2 d-flex gap-1">
+        <a href="{{ url_for('admin_stock_monitor', risk='Critical') }}" class="btn btn-sm btn-danger flex-grow-1" title="Show only Critical">Critical</a>
+        <a href="{{ url_for('admin_stock_monitor') }}" class="btn btn-sm btn-outline-secondary" title="Reset Filters"><i class="bi bi-arrow-counterclockwise"></i></a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Stock Matrix Table -->
+<div class="card card-phc shadow-sm">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-phc" id="stockMonitorTable">
+        <thead>
+          <tr>
+            <th>Primary Health Centre</th>
+            <th>Medicine</th>
+            <th>Usable Stock</th>
+            <th>Safety Reserve</th>
+            <th>Daily Velocity</th>
+            <th>Lead Time</th>
+            <th>Days Remaining</th>
+            <th>Est. Stock-out</th>
+            <th>Risk Level</th>
+            <th>Safe Surplus</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in items %}
+            <tr>
+              <td>
+                <div class="fw-bold text-dark">{{ item.phc_name }}</div>
+                <small class="text-muted">{{ item.phc_location }}</small>
+              </td>
+              <td>
+                <div class="fw-semibold text-primary">{{ item.medicine_name }}</div>
+                <small class="text-muted">{{ item.dosage_form or item.unit }}</small>
+              </td>
+              <td>
+                <span class="fs-6 fw-bold {% if item.usable_quantity == 0 %}text-danger{% elif item.usable_quantity < item.safety_stock %}text-warning-emphasis{% else %}text-success{% endif %}">
+                  {{ item.usable_quantity }}
+                </span>
+                <small class="text-muted">{{ item.unit }}</small>
+              </td>
+              <td>{{ item.safety_stock }}</td>
+              <td>{{ item.avg_daily_consumption }} /day</td>
+              <td>{{ item.replenishment_lead_time_days }} days</td>
+              <td>
+                <strong class="{% if item.prediction.risk_level == 'Critical' %}text-danger{% elif item.prediction.risk_level == 'High' %}text-warning-emphasis{% else %}text-dark{% endif %}">
+                  {{ item.prediction.days_remaining_display }}
+                </strong>
+              </td>
+              <td>
+                <small class="{% if item.prediction.risk_level == 'Critical' %}text-danger fw-bold{% else %}text-secondary{% endif %}">
+                  {{ item.prediction.predicted_stockout_display }}
+                </small>
+              </td>
+              <td>
+                <span class="badge-risk {{ item.prediction.risk_level|lower }}">
+                  {{ item.prediction.risk_level }}
+                </span>
+              </td>
+              <td>
+                {% if item.prediction.surplus_available > 0 %}
+                  <span class="badge bg-success-subtle text-success border border-success-subtle">
+                    +{{ item.prediction.surplus_available }} surplus
+                  </span>
+                {% else %}
+                  <span class="badge bg-light text-secondary border">0 surplus</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% else %}
+            <tr>
+              <td colspan="10" class="text-center py-4 text-muted">No inventory records found for the selected criteria.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,351 @@
+/* Smart PHC — Healthcare Operations Design System */
+:root {
+  --phc-primary: #0f2942;
+  --phc-primary-dark: #0a1c2e;
+  --phc-primary-light: #1e3a5f;
+  --phc-accent: #0d9488;
+  --phc-accent-hover: #0f766e;
+  --phc-surface: #ffffff;
+  --phc-bg: #f8fafc;
+  --phc-bg-alt: #f1f5f9;
+  --phc-text-main: #0f172a;
+  --phc-text-muted: #64748b;
+  --phc-border: #e2e8f0;
+  --phc-border-subtle: #cbd5e1;
+  --phc-danger: #dc2626;
+  --phc-danger-bg: #fef2f2;
+  --phc-warning: #d97706;
+  --phc-warning-bg: #fffbeb;
+  --phc-info: #0284c7;
+  --phc-info-bg: #f0f9ff;
+  --phc-success: #16a34a;
+  --phc-success-bg: #f0fdf4;
+  --phc-radius-sm: 6px;
+  --phc-radius-md: 10px;
+  --phc-radius-lg: 14px;
+  --phc-shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --phc-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+  --phc-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: var(--phc-text-main);
+  background-color: var(--phc-bg);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+main {
+  flex: 1 0 auto;
+}
+
+/* Navbar */
+.navbar-phc {
+  background-color: var(--phc-primary);
+  border-bottom: 2px solid rgba(13, 148, 136, 0.3);
+  box-shadow: var(--phc-shadow-md);
+}
+
+.navbar-phc .navbar-brand {
+  font-weight: 700;
+  font-size: 1.15rem;
+  letter-spacing: -0.02em;
+  color: #ffffff !important;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.brand-badge {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background-color: var(--phc-accent);
+  color: white;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+}
+
+.nav-link {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #cbd5e1 !important;
+  padding: 0.5rem 0.75rem !important;
+  border-radius: var(--phc-radius-sm);
+  transition: all 0.15s ease-in-out;
+}
+
+.nav-link:hover, .nav-link.active {
+  color: #ffffff !important;
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+/* User Pill in Navbar */
+.user-badge {
+  background-color: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #f8fafc;
+  font-size: 0.8rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: var(--phc-radius-sm);
+}
+
+/* Page Headers */
+.page-header {
+  margin-bottom: 1.5rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--phc-border);
+}
+
+.page-header h1, .page-header h2 {
+  font-size: 1.45rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--phc-primary);
+  margin-bottom: 0.25rem;
+}
+
+.page-header p {
+  color: var(--phc-text-muted);
+  font-size: 0.9rem;
+  margin-bottom: 0;
+}
+
+/* Healthcare Metric Stat Cards */
+.stat-card {
+  background: var(--phc-surface);
+  border: 1px solid var(--phc-border);
+  border-radius: var(--phc-radius-md);
+  padding: 1.25rem;
+  box-shadow: var(--phc-shadow-sm);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  height: 100%;
+}
+
+.stat-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--phc-shadow-md);
+}
+
+.stat-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--phc-radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.3rem;
+  margin-bottom: 0.75rem;
+}
+
+.stat-icon.primary { background: #e0f2fe; color: #0284c7; }
+.stat-icon.danger { background: var(--phc-danger-bg); color: var(--phc-danger); }
+.stat-icon.warning { background: var(--phc-warning-bg); color: var(--phc-warning); }
+.stat-icon.success { background: var(--phc-success-bg); color: var(--phc-success); }
+.stat-icon.teal { background: #ccfbf1; color: var(--phc-accent); }
+
+.stat-value {
+  font-size: 1.85rem;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--phc-text-main);
+}
+
+.stat-label {
+  font-size: 0.825rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--phc-text-muted);
+  margin-top: 0.35rem;
+}
+
+.stat-subtext {
+  font-size: 0.8rem;
+  color: var(--phc-text-muted);
+  margin-top: 0.25rem;
+}
+
+/* Card Surfaces */
+.card-phc {
+  background: var(--phc-surface);
+  border: 1px solid var(--phc-border);
+  border-radius: var(--phc-radius-md);
+  box-shadow: var(--phc-shadow-sm);
+  margin-bottom: 1.5rem;
+  overflow: hidden;
+}
+
+.card-phc .card-header {
+  background: #ffffff;
+  border-bottom: 1px solid var(--phc-border);
+  padding: 1rem 1.25rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--phc-primary);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.card-phc .card-body {
+  padding: 1.25rem;
+}
+
+/* Custom Table Styles */
+.table-phc {
+  margin-bottom: 0;
+  font-size: 0.875rem;
+  vertical-align: middle;
+}
+
+.table-phc thead th {
+  background-color: var(--phc-bg-alt);
+  color: var(--phc-text-muted);
+  font-weight: 600;
+  font-size: 0.775rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-top: none;
+  border-bottom: 1px solid var(--phc-border);
+  padding: 0.75rem 1rem;
+}
+
+.table-phc tbody td {
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--phc-border);
+  color: var(--phc-text-main);
+}
+
+.table-phc tbody tr:hover {
+  background-color: #f8fafc;
+}
+
+/* Risk Badges */
+.badge-risk {
+  font-weight: 600;
+  font-size: 0.75rem;
+  padding: 0.35rem 0.65rem;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.badge-risk.critical {
+  background-color: var(--phc-danger-bg);
+  color: var(--phc-danger);
+  border: 1px solid #fca5a5;
+}
+
+.badge-risk.high {
+  background-color: var(--phc-warning-bg);
+  color: var(--phc-warning);
+  border: 1px solid #fcd34d;
+}
+
+.badge-risk.medium {
+  background-color: var(--phc-info-bg);
+  color: var(--phc-info);
+  border: 1px solid #bae6fd;
+}
+
+.badge-risk.safe {
+  background-color: var(--phc-success-bg);
+  color: var(--phc-success);
+  border: 1px solid #bbf7d0;
+}
+
+/* Button Hierarchy */
+.btn-phc-primary {
+  background-color: var(--phc-primary);
+  color: #ffffff;
+  border: 1px solid var(--phc-primary-dark);
+  font-weight: 600;
+  font-size: 0.875rem;
+  padding: 0.5rem 1rem;
+  border-radius: var(--phc-radius-sm);
+  transition: all 0.15s ease;
+}
+
+.btn-phc-primary:hover, .btn-phc-primary:focus {
+  background-color: var(--phc-primary-dark);
+  color: #ffffff;
+  box-shadow: var(--phc-shadow-sm);
+}
+
+.btn-phc-accent {
+  background-color: var(--phc-accent);
+  color: #ffffff;
+  border: 1px solid var(--phc-accent-hover);
+  font-weight: 600;
+  font-size: 0.875rem;
+  padding: 0.5rem 1rem;
+  border-radius: var(--phc-radius-sm);
+}
+
+.btn-phc-accent:hover, .btn-phc-accent:focus {
+  background-color: var(--phc-accent-hover);
+  color: #ffffff;
+}
+
+/* Public Hero & Search Box */
+.hero-banner {
+  background: linear-gradient(135deg, #0f2942 0%, #1e3a5f 100%);
+  color: #ffffff;
+  padding: 3.5rem 1rem 3rem 1rem;
+  border-bottom: 3px solid var(--phc-accent);
+}
+
+.search-box-card {
+  background: #ffffff;
+  border-radius: var(--phc-radius-md);
+  box-shadow: var(--phc-shadow-lg);
+  padding: 1.5rem;
+  margin-top: -2rem;
+  border: 1px solid var(--phc-border);
+}
+
+/* Explanation Box */
+.prediction-box {
+  background-color: #f8fafc;
+  border-left: 4px solid var(--phc-accent);
+  padding: 1rem;
+  border-radius: 0 var(--phc-radius-sm) var(--phc-radius-sm) 0;
+  font-size: 0.9rem;
+}
+
+/* Disclaimer Callout */
+.disclaimer-box {
+  background-color: #eff6ff;
+  border: 1px solid #bfdbfe;
+  border-radius: var(--phc-radius-sm);
+  padding: 0.85rem 1.15rem;
+  color: #1e40af;
+  font-size: 0.85rem;
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+}
+
+/* Footer */
+footer.phc-footer {
+  background-color: var(--phc-primary-dark);
+  color: #94a3b8;
+  padding: 2rem 0;
+  font-size: 0.85rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+footer.phc-footer a {
+  color: #cbd5e1;
+  text-decoration: none;
+}
+
+footer.phc-footer a:hover {
+  color: #ffffff;
+  text-decoration: underline;
+}

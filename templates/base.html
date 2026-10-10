@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Smart PHC — Medicine Stock Prediction & Early Warning System{% endblock %}</title>
+  
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Bootstrap Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <!-- Custom Healthcare Design System -->
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+  <!-- Top Navigation Bar -->
+  <nav class="navbar navbar-expand-lg navbar-dark navbar-phc sticky-top">
+    <div class="container-fluid px-lg-4">
+      <a class="navbar-brand" href="{{ url_for('landing') }}">
+        <i class="bi bi-hospital-fill text-teal"></i>
+        <span>Smart PHC</span>
+        <span class="brand-badge">Stock Forecaster</span>
+      </a>
+      
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#phcNav">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+
+      <div class="collapse navbar-collapse" id="phcNav">
+        <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+          {% if session.get('role') == 'admin' %}
+            <li class="nav-item">
+              <a class="nav-link {% if active_page == 'admin_dashboard' %}active{% endif %}" href="{{ url_for('admin_dashboard') }}">
+                <i class="bi bi-speedometer2 me-1"></i> Command Centre
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link {% if active_page == 'admin_phcs' %}active{% endif %}" href="{{ url_for('admin_phcs') }}">
+                <i class="bi bi-building me-1"></i> PHC Registry
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link {% if active_page == 'stock_monitor' %}active{% endif %}" href="{{ url_for('admin_stock_monitor') }}">
+                <i class="bi bi-activity me-1"></i> District Stock Monitor
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link {% if active_page == 'admin_transfers' %}active{% endif %}" href="{{ url_for('admin_transfers') }}">
+                <i class="bi bi-arrow-left-right me-1"></i> Transfer Requests
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link {% if active_page == 'admin_reports' %}active{% endif %}" href="{{ url_for('admin_reports') }}">
+                <i class="bi bi-file-earmark-bar-graph me-1"></i> Reports
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link {% if active_page == 'audit_logs' %}active{% endif %}" href="{{ url_for('admin_audit_logs') }}">
+                <i class="bi bi-shield-check me-1"></i> Audit Trail
+              </a>
+            </li>
+          {% elif session.get('role') == 'phc_staff' %}
+            <li class="nav-item">
+              <a class="nav-link {% if active_page == 'phc_dashboard' %}active{% endif %}" href="{{ url_for('phc_dashboard') }}">
+                <i class="bi bi-grid-1x2-fill me-1"></i> My PHC Dashboard
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link {% if active_page == 'inventory' %}active{% endif %}" href="{{ url_for('phc_inventory') }}">
+                <i class="bi bi-capsule-pill me-1"></i> Inventory & Predictions
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link {% if active_page == 'alerts' %}active{% endif %}" href="{{ url_for('phc_alerts') }}">
+                <i class="bi bi-exclamation-triangle-fill me-1"></i> Alerts
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link {% if active_page == 'transfers' %}active{% endif %}" href="{{ url_for('phc_transfers') }}">
+                <i class="bi bi-truck me-1"></i> Emergency Transfers
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link {% if active_page == 'deliveries' %}active{% endif %}" href="{{ url_for('phc_deliveries') }}">
+                <i class="bi bi-box2-heart me-1"></i> Patient Deliveries
+              </a>
+            </li>
+          {% else %}
+            <!-- Public / Patient Navigation -->
+            <li class="nav-item">
+              <a class="nav-link {% if active_page == 'patient_search' %}active{% endif %}" href="{{ url_for('patient_search') }}">
+                <i class="bi bi-search me-1"></i> Medicine Availability
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link {% if active_page == 'patient_delivery' %}active{% endif %}" href="{{ url_for('patient_delivery') }}">
+                <i class="bi bi-box-seam me-1"></i> Request Delivery
+              </a>
+            </li>
+            <li class="nav-item">
+              <a class="nav-link {% if active_page == 'patient_track' %}active{% endif %}" href="{{ url_for('patient_track') }}">
+                <i class="bi bi-geo-alt me-1"></i> Track Request
+              </a>
+            </li>
+          {% endif %}
+        </ul>
+
+        <!-- Right Side: User Status & Auth -->
+        <div class="d-flex align-items-center gap-2">
+          {% if session.get('user_id') %}
+            <span class="user-badge d-none d-md-inline-block">
+              <i class="bi bi-person-circle me-1"></i>
+              <strong>{{ session.get('username') }}</strong>
+              {% if session.get('phc_name') %}
+                <span class="text-info ms-1">({{ session.get('phc_name') }})</span>
+              {% else %}
+                <span class="text-warning ms-1">(District Admin)</span>
+              {% endif %}
+            </span>
+            <a href="{{ url_for('logout') }}" class="btn btn-sm btn-outline-light">
+              <i class="bi bi-box-arrow-right me-1"></i> Sign Out
+            </a>
+          {% else %}
+            <a href="{{ url_for('patient_search') }}" class="btn btn-sm btn-outline-light me-1">
+              <i class="bi bi-person-heart me-1"></i> Patient Portal
+            </a>
+            <a href="{{ url_for('login') }}" class="btn btn-sm btn-phc-accent">
+              <i class="bi bi-lock-fill me-1"></i> Staff / Admin Login
+            </a>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Flash Messages Notification Container -->
+  <div class="container-fluid px-lg-4 mt-3">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ category if category != 'error' else 'danger' }} alert-dismissible fade show shadow-sm" role="alert">
+            <div class="d-flex align-items-center gap-2">
+              {% if category == 'success' %}
+                <i class="bi bi-check-circle-fill text-success fs-5"></i>
+              {% elif category in ['danger', 'error'] %}
+                <i class="bi bi-exclamation-octagon-fill text-danger fs-5"></i>
+              {% elif category == 'warning' %}
+                <i class="bi bi-exclamation-triangle-fill text-warning fs-5"></i>
+              {% else %}
+                <i class="bi bi-info-circle-fill text-info fs-5"></i>
+              {% endif %}
+              <div>{{ message }}</div>
+            </div>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+  </div>
+
+  <!-- Main View Block -->
+  <main class="container-fluid px-lg-4 py-3">
+    {% block content %}{% endblock %}
+  </main>
+
+  <!-- Operational Footer -->
+  <footer class="phc-footer mt-auto">
+    <div class="container-fluid px-lg-4">
+      <div class="row gy-3 align-items-center">
+        <div class="col-md-6 text-center text-md-start">
+          <div class="fw-bold text-white mb-1">
+            <i class="bi bi-shield-plus text-teal me-1"></i> Smart PHC Decision Support System
+          </div>
+          <small class="text-secondary">
+            Predictive stock monitoring, distance-aware emergency surplus matching, and transparent public availability.
+          </small>
+        </div>
+        <div class="col-md-6 text-center text-md-end">
+          <div class="small text-secondary mb-1">
+            <span class="badge bg-secondary me-2">Hackathon Demo Mode</span>
+            Local SQLite Engine • Version 1.0.0
+          </div>
+          <div class="small">
+            <a href="{{ url_for('patient_search') }}" class="me-3">Medicine Search</a>
+            <a href="{{ url_for('landing') }}" class="me-3">About System</a>
+            <a href="{{ url_for('login') }}">Staff Sign In</a>
+          </div>
+        </div>
+      </div>
+      <div class="border-top border-secondary border-opacity-25 mt-3 pt-2 text-center text-secondary small">
+        Notice: Availability records reflect latest verified PHC reports. Always contact the healthcare facility directly for emergency requirements.
+      </div>
+    </div>
+  </footer>
+
+  <!-- Bootstrap 5 Bundle JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <!-- Application JS -->
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

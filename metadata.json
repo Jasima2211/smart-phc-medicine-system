@@ -1,0 +1,8 @@
+{
+  "name": "Smart PHC — Medicine Stock Prediction & Early Warning System",
+  "description": "Healthcare supply-chain decision-support system featuring predictive stock monitoring, early warnings, distance-aware surplus matching, authorised emergency transfers, and public availability searches.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

@@ -1,0 +1,221 @@
+{% extends "base.html" %}
+
+{% block title %}District Command Centre — Smart PHC{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex flex-wrap justify-content-between align-items-center gap-3">
+  <div>
+    <h1><i class="bi bi-speedometer2 text-teal me-2"></i>District Health Command Centre</h1>
+    <p>Macro-level inventory oversight, depletion prediction surveillance, and inter-facility transfer governance.</p>
+  </div>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('admin_stock_monitor') }}" class="btn btn-phc-primary btn-sm">
+      <i class="bi bi-activity me-1"></i> Stock Surveillance
+    </a>
+    <a href="{{ url_for('admin_transfers') }}" class="btn btn-phc-accent btn-sm">
+      <i class="bi bi-arrow-left-right me-1"></i> Review Transfers ({{ stats.pending_transfers }})
+    </a>
+  </div>
+</div>
+
+<!-- District Key Metrics Grid -->
+<div class="row g-3 mb-4">
+  <div class="col-sm-6 col-lg-3">
+    <div class="stat-card">
+      <div class="stat-icon primary"><i class="bi bi-building"></i></div>
+      <div class="stat-value">{{ stats.approved_phcs }} <span class="fs-6 text-muted fw-normal">/ {{ stats.total_phcs }}</span></div>
+      <div class="stat-label">Approved Health Centres</div>
+      <div class="stat-subtext">{{ stats.pending_phcs }} pending approval</div>
+    </div>
+  </div>
+
+  <div class="col-sm-6 col-lg-3">
+    <div class="stat-card">
+      <div class="stat-icon danger"><i class="bi bi-exclamation-octagon-fill"></i></div>
+      <div class="stat-value text-danger">{{ stats.critical_alerts }}</div>
+      <div class="stat-label">Critical Shortages</div>
+      <div class="stat-subtext">Immediate stock-out risks across district</div>
+    </div>
+  </div>
+
+  <div class="col-sm-6 col-lg-3">
+    <div class="stat-card">
+      <div class="stat-icon warning"><i class="bi bi-arrow-left-right"></i></div>
+      <div class="stat-value text-warning-emphasis">{{ stats.pending_transfers }}</div>
+      <div class="stat-label">Pending Transfers</div>
+      <div class="stat-subtext">Awaiting administrative approval</div>
+    </div>
+  </div>
+
+  <div class="col-sm-6 col-lg-3">
+    <div class="stat-card">
+      <div class="stat-icon teal"><i class="bi bi-check2-circle"></i></div>
+      <div class="stat-value text-teal">{{ stats.completed_transfers }}</div>
+      <div class="stat-label">Completed Transfers</div>
+      <div class="stat-subtext">Successfully redistributed medicines</div>
+    </div>
+  </div>
+</div>
+
+<!-- Charts & Surveillance Row -->
+<div class="row g-4 mb-4">
+  <!-- Chart: District Risk Portfolio -->
+  <div class="col-lg-5">
+    <div class="card card-phc h-100">
+      <div class="card-header">
+        <span><i class="bi bi-pie-chart-fill me-2 text-primary"></i>District Stock Risk Composition</span>
+      </div>
+      <div class="card-body d-flex flex-column align-items-center justify-content-center">
+        <div style="height: 240px; width: 100%;">
+          <canvas id="districtRiskChart"></canvas>
+        </div>
+        <div class="d-flex justify-content-center flex-wrap gap-3 mt-3 small text-muted">
+          <span><strong class="text-danger">●</strong> Critical: {{ stats.critical_alerts }}</span>
+          <span><strong class="text-warning">●</strong> High: {{ stats.high_risk }}</span>
+          <span><strong class="text-info">●</strong> Medium: {{ stats.medium_risk }}</span>
+          <span><strong class="text-success">●</strong> Safe: {{ stats.safe_count }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Priority Pending Transfer Requests (Requiring Immediate Admin Action) -->
+  <div class="col-lg-7">
+    <div class="card card-phc h-100">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span class="fw-bold"><i class="bi bi-bell-fill text-warning me-2"></i>Pending Transfer Requests Requiring Approval</span>
+        <a href="{{ url_for('admin_transfers') }}" class="btn btn-sm btn-outline-secondary">View All</a>
+      </div>
+      <div class="card-body p-0">
+        {% if pending_transfers_list %}
+          <div class="table-responsive">
+            <table class="table table-phc">
+              <thead>
+                <tr>
+                  <th>Medicine</th>
+                  <th>Requesting PHC</th>
+                  <th>Supplying PHC</th>
+                  <th>Distance</th>
+                  <th>Qty</th>
+                  <th class="text-end">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for t in pending_transfers_list %}
+                  <tr>
+                    <td>
+                      <div class="fw-bold text-dark">{{ t.medicine_name }}</div>
+                      <small class="text-muted">{{ t.reason[:30] }}...</small>
+                    </td>
+                    <td><span class="text-danger fw-semibold">{{ t.requesting_phc_name }}</span></td>
+                    <td><span class="text-success fw-semibold">{{ t.supplying_phc_name }}</span></td>
+                    <td>
+                      {% if t.distance_km is not none %}
+                        <span class="badge bg-light text-dark border">{{ t.distance_km }} km</span>
+                      {% else %}
+                        <small class="text-muted">Unmapped</small>
+                      {% endif %}
+                    </td>
+                    <td><strong>{{ t.requested_quantity }}</strong> units</td>
+                    <td class="text-end">
+                      <div class="btn-group btn-group-sm">
+                        <!-- Quick Approve Form -->
+                        <form action="{{ url_for('admin_transfer_approve', transfer_id=t.id) }}" method="POST" class="d-inline" data-confirm="Approve emergency transfer #TR-{{ t.id }}? Supplying PHC will be authorized to dispatch {{ t.requested_quantity }} units.">
+                          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                          <input type="hidden" name="approved_quantity" value="{{ t.requested_quantity }}">
+                          <input type="hidden" name="admin_notes" value="Approved by District Medical Officer. Distance-aware surplus match confirmed.">
+                          <button type="submit" class="btn btn-success" title="Approve Transfer">
+                            <i class="bi bi-check-lg"></i> Approve
+                          </button>
+                        </form>
+                        <!-- Quick Reject Form -->
+                        <form action="{{ url_for('admin_transfer_reject', transfer_id=t.id) }}" method="POST" class="d-inline" data-confirm="Reject emergency transfer #TR-{{ t.id }}?">
+                          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                          <input type="hidden" name="admin_notes" value="Declined by District Admin. Central replenishment requisition recommended.">
+                          <button type="submit" class="btn btn-outline-danger" title="Reject Transfer">
+                            <i class="bi bi-x-lg"></i> Reject
+                          </button>
+                        </form>
+                      </div>
+                    </td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <div class="p-4 text-center text-muted">
+            <i class="bi bi-check2-circle text-success fs-1 mb-2"></i>
+            <h6 class="fw-bold text-dark">No Pending Transfers</h6>
+            <p class="small text-muted mb-0">All submitted inter-facility transfer requests have been processed.</p>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- District Critical Stock Hotspots Overview -->
+<div class="card card-phc">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span class="fw-bold text-dark"><i class="bi bi-exclamation-triangle-fill text-danger me-2"></i>Active District Critical Shortages</span>
+    <a href="{{ url_for('admin_stock_monitor') }}" class="btn btn-sm btn-outline-primary">Open Full District Monitor</a>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-phc">
+        <thead>
+          <tr>
+            <th>Primary Health Centre</th>
+            <th>Medicine</th>
+            <th>Usable Stock</th>
+            <th>Daily Consumption</th>
+            <th>Days Remaining</th>
+            <th>Est. Stock-out</th>
+            <th>Risk Classification</th>
+            <th>Recommended District Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for alert in active_alerts %}
+            <tr>
+              <td>
+                <div class="fw-bold text-dark">{{ alert.phc_name }}</div>
+                <small class="text-muted">{{ alert.phc_location }}</small>
+              </td>
+              <td class="fw-semibold">{{ alert.medicine_name }}</td>
+              <td><span class="badge bg-light text-danger border fs-6">{{ alert.usable_quantity }}</span></td>
+              <td>{{ alert.avg_daily_consumption }} /day</td>
+              <td><strong class="text-danger">{{ alert.days_remaining }} days</strong></td>
+              <td><small class="text-danger fw-semibold">{{ alert.predicted_stockout_date or 'Immediate' }}</small></td>
+              <td>
+                <span class="badge-risk {{ alert.risk_level|lower }}">{{ alert.risk_level }}</span>
+              </td>
+              <td>
+                <small class="text-muted">{{ alert.message[:90] }}...</small>
+              </td>
+            </tr>
+          {% else %}
+            <tr>
+              <td colspan="8" class="text-center py-4 text-muted">No critical alerts currently open across the district.</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    renderPhcStockChart(
+      "districtRiskChart",
+      ["Critical", "High", "Medium", "Safe"],
+      [{{ stats.critical_alerts }}, {{ stats.high_risk }}, {{ stats.medium_risk }}, {{ stats.safe_count }}],
+      ["#dc2626", "#d97706", "#0284c7", "#16a34a"]
+    );
+  });
+</script>
+{% endblock %}

@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block title %}Stock Alerts & Warnings — {{ phc.name }} | Smart PHC{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex flex-wrap justify-content-between align-items-center gap-3">
+  <div>
+    <h1><i class="bi bi-exclamation-triangle-fill text-danger me-2"></i>Active Alerts & Early Warnings</h1>
+    <p>Predictive stock-out alerts and safety threshold violations for <strong>{{ phc.name }}</strong>.</p>
+  </div>
+  <div class="d-flex gap-2">
+    <a href="{{ url_for('phc_inventory') }}" class="btn btn-phc-primary btn-sm">
+      <i class="bi bi-capsule me-1"></i> View Inventory
+    </a>
+  </div>
+</div>
+
+<div class="card card-phc shadow-sm">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span class="fw-bold"><i class="bi bi-bell-fill text-danger me-2"></i>Monitored Alerts ({{ alerts|length }})</span>
+    <span class="small text-muted">Auto-synchronized with stock transaction events</span>
+  </div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-phc">
+        <thead>
+          <tr>
+            <th>Severity</th>
+            <th>Medicine</th>
+            <th>Current Stock</th>
+            <th>Alert Condition & Explanation</th>
+            <th>Est. Stock-out</th>
+            <th>Status</th>
+            <th>Logged Date</th>
+            <th class="text-end">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for a in alerts %}
+            <tr>
+              <td>
+                <span class="badge-risk {{ a.risk_level|lower }}">
+                  <i class="bi {% if a.risk_level == 'Critical' %}bi-shield-x{% elif a.risk_level == 'High' %}bi-exclamation-triangle-fill{% else %}bi-info-circle-fill{% endif %}"></i>
+                  {{ a.risk_level }}
+                </span>
+              </td>
+              <td>
+                <div class="fw-bold text-dark">{{ a.medicine_name }}</div>
+                <div class="small text-muted">{{ a.dosage_form or a.unit }}</div>
+              </td>
+              <td>
+                <span class="badge bg-light text-dark border fs-6">{{ a.usable_quantity }} {{ a.unit }}</span>
+              </td>
+              <td>
+                <p class="mb-0 text-dark small" style="max-width: 420px;">{{ a.message }}</p>
+              </td>
+              <td>
+                {% if a.predicted_stockout_date %}
+                  <strong class="text-danger small">{{ a.predicted_stockout_date }}</strong>
+                {% else %}
+                  <small class="text-muted">N/A</small>
+                {% endif %}
+              </td>
+              <td>
+                {% if a.status == 'open' %}
+                  <span class="badge bg-danger-subtle text-danger border border-danger-subtle">Active / Open</span>
+                {% elif a.status == 'acknowledged' %}
+                  <span class="badge bg-warning-subtle text-warning-emphasis">Acknowledged</span>
+                {% else %}
+                  <span class="badge bg-success-subtle text-success">Resolved</span>
+                {% endif %}
+              </td>
+              <td><small class="text-muted">{{ a.created_at|format_dt }}</small></td>
+              <td class="text-end">
+                <a href="{{ url_for('transfer_recommendations', medicine_id=a.medicine_id) }}" class="btn btn-phc-accent btn-sm">
+                  <i class="bi bi-truck me-1"></i> Find Surplus
+                </a>
+              </td>
+            </tr>
+          {% else %}
+            <tr>
+              <td colspan="8" class="text-center py-5 text-muted">
+                <i class="bi bi-check2-circle text-success fs-1 mb-2"></i>
+                <h6 class="fw-bold text-dark">No Active Shortage Alerts</h6>
+                <p class="small text-muted mb-0">All dispensary items have sufficient stock buffers exceeding lead times.</p>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
