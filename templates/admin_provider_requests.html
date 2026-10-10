@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+
+{% block title %}Provider Replenishment Requests — Smart PHC Admin{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex flex-wrap justify-content-between align-items-center gap-3">
+  <div>
+    <h1>Provider Stock Replenishment Requests</h1>
+    <p>Review and authorize medicine replenishment requests submitted by registered Primary Health Centres.</p>
+  </div>
+  <div>
+    <a href="{{ url_for('admin_stock_monitor') }}" class="btn btn-phc-primary btn-sm">
+      Stock Monitor
+    </a>
+  </div>
+</div>
+
+<!-- Filters Card -->
+<div class="card card-phc mb-4">
+  <div class="card-body p-3">
+    <form action="{{ url_for('admin_provider_requests') }}" method="GET" class="row g-2 align-items-center">
+      <div class="col-md-4">
+        <select name="phc_id" class="form-select form-select-sm">
+          <option value="">All Health Centres</option>
+          {% for p in all_phcs %}
+            <option value="{{ p.id }}" {% if selected_phc_id == p.id %}selected{% endif %}>{{ p.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-md-3">
+        <select name="medicine_id" class="form-select form-select-sm">
+          <option value="">All Medicines</option>
+          {% for m in all_medicines %}
+            <option value="{{ m.id }}" {% if selected_med_id == m.id %}selected{% endif %}>{{ m.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-md-3">
+        <select name="status" class="form-select form-select-sm">
+          <option value="">All Statuses</option>
+          <option value="pending" {% if selected_status == 'pending' %}selected{% endif %}>Pending Review</option>
+          <option value="approved" {% if selected_status == 'approved' %}selected{% endif %}>Approved</option>
+          <option value="rejected" {% if selected_status == 'rejected' %}selected{% endif %}>Rejected</option>
+        </select>
+      </div>
+
+      <div class="col-md-2 d-flex gap-1">
+        <button type="submit" class="btn btn-phc-primary btn-sm flex-grow-1">Filter</button>
+        {% if selected_phc_id or selected_med_id or selected_status %}
+          <a href="{{ url_for('admin_provider_requests') }}" class="btn btn-outline-secondary btn-sm" title="Reset">Clear</a>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Requests Table -->
+<div class="card card-phc shadow-sm">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span>Replenishment Requests ({{ requests|length }})</span>
+  </div>
+  <div class="card-body p-0">
+    {% if requests %}
+      <div class="table-responsive">
+        <table class="table table-phc">
+          <thead>
+            <tr>
+              <th>Request ID</th>
+              <th>Health Centre</th>
+              <th>Medicine</th>
+              <th>Quantity</th>
+              <th>Request Date</th>
+              <th>Reason</th>
+              <th>Status</th>
+              <th>Admin Notes</th>
+              <th class="text-end">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in requests %}
+              <tr>
+                <td><code>#REQ-{{ r.id }}</code></td>
+                <td><strong>{{ r.phc_name }}</strong></td>
+                <td><strong>{{ r.medicine_name }}</strong></td>
+                <td><strong>{{ r.requested_quantity }}</strong> units</td>
+                <td><small class="text-muted">{{ r.created_at|format_dt }}</small></td>
+                <td><small class="text-muted">{{ r.reason }}</small></td>
+                <td>
+                  {% if r.status == 'approved' %}
+                    <span class="badge-risk safe">Approved</span>
+                  {% elif r.status == 'rejected' %}
+                    <span class="badge-risk critical">Rejected</span>
+                  {% else %}
+                    <span class="badge-risk high">Pending</span>
+                  {% endif %}
+                </td>
+                <td><small class="text-muted">{{ r.admin_notes or '—' }}</small></td>
+                <td class="text-end">
+                  {% if r.status == 'pending' %}
+                    <div class="btn-group btn-group-sm">
+                      <form action="{{ url_for('admin_provider_request_approve', request_id=r.id) }}" method="POST" class="d-inline">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-success btn-sm">Approve</button>
+                      </form>
+                      <form action="{{ url_for('admin_provider_request_reject', request_id=r.id) }}" method="POST" class="d-inline ms-1">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-outline-danger btn-sm">Reject</button>
+                      </form>
+                    </div>
+                  {% else %}
+                    <span class="small text-muted">Processed</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="p-4 text-center text-muted">
+        <p class="mb-0">No provider replenishment requests match the filter criteria.</p>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

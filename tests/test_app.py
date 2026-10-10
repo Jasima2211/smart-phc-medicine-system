@@ -435,3 +435,215 @@ def test_csrf_protection_enabled(app_instance):
     res = c.post("/login", data={"username": "admin", "password": "Admin@123"})
     assert res.status_code == 400
 
+# -------------------------------------------------------------
+# 7. Comprehensive Specific Workflow Tests (TEST 1 - TEST 12)
+# -------------------------------------------------------------
+def test_scenario_1_minimal_landing_page(client):
+    """TEST 1: Landing page displays only Smart PHC and the three login options."""
+    res = client.get("/")
+    assert res.status_code == 200
+    html = res.data.decode("utf-8")
+    assert "Smart PHC" in html
+    assert "Patient Login" in html
+    assert "District Administrator Login" in html
+    assert "Medical Pharmacist Login" in html
+    assert "Never let a rural clinic run out" not in html
+    assert "Judges Demonstration Guide" not in html
+
+def test_scenario_2_provider_registration_pending_status(client, app_instance):
+    """TEST 2: Register a new provider starts as pending and cannot appear in search."""
+    res = client.post("/provider/register", data={
+        "name": "New Hope Health Centre",
+        "location": "North Sub-district",
+        "contact_phone": "+91 80 9988 7766",
+        "username": "new_hope_staff",
+        "password": "Password@123",
+        "confirm_password": "Password@123"
+    }, follow_redirects=True)
+    assert res.status_code == 200
+
+    with app_instance.app_context():
+        db = get_db()
+        phc = db.execute("SELECT * FROM phcs WHERE name = 'New Hope Health Centre'").fetchone()
+        assert phc is not None
+        assert phc["approval_status"] == "pending"
+        assert phc["active_status"] == 0
+
+    search_res = client.get("/patient/search")
+    assert b"New Hope Health Centre" not in search_res.data
+
+def test_scenario_3_admin_approves_provider(client, app_instance):
+    """TEST 3: District Administrator views pending provider and approves it."""
+    client.post("/provider/register", data={
+        "name": "Hill Crest Rural Centre",
+        "location": "Ridge Road",
+        "contact_phone": "+91 80 5544 3322",
+        "username": "hill_crest_staff",
+        "password": "Password@123",
+        "confirm_password": "Password@123"
+    }, follow_redirects=True)
+
+    with app_instance.app_context():
+        db = get_db()
+        phc = db.execute("SELECT id FROM phcs WHERE name = 'Hill Crest Rural Centre'").fetchone()
+        phc_id = phc["id"]
+
+    client.post("/login", data={"username": "admin", "password": "Admin@123"}, follow_redirects=True)
+    app_res = client.post(f"/admin/phcs/approve/{phc_id}", follow_redirects=True)
+    assert app_res.status_code == 200
+
+    with app_instance.app_context():
+        db = get_db()
+        phc_after = db.execute("SELECT approval_status, active_status FROM phcs WHERE id = ?", (phc_id,)).fetchone()
+        assert phc_after["approval_status"] == "approved"
+        assert phc_after["active_status"] == 1
+
+def test_scenario_4_pharmacist_inventory_update(client, app_instance):
+    """TEST 4: Pharmacist views and updates their own inventory; persists after refresh."""
+    client.post("/login", data={"username": "green_valley_staff", "password": "Staff@123"}, follow_redirects=True)
+    
+    with app_instance.app_context():
+        db = get_db()
+        inv = db.execute("SELECT id FROM inventory WHERE phc_id = 1 AND medicine_id = 1").fetchone()
+        inv_id = inv["id"]
+
+    up_res = client.post(f"/phc/inventory/update-levels/{inv_id}", data={
+        "usable_quantity": 250,
+        "safety_stock": 60,
+        "avg_daily_consumption": 12.0,
+        "replenishment_lead_time_days": 7
+    }, follow_redirects=True)
+    assert up_res.status_code == 200
+
+    view_res = client.get("/phc/inventory")
+    assert view_res.status_code == 200
+    assert b"250" in view_res.data
+
+    with app_instance.app_context():
+        db = get_db()
+        inv_after = db.execute("SELECT usable_quantity, safety_stock FROM inventory WHERE id = ?", (inv_id,)).fetchone()
+        assert inv_after["usable_quantity"] == 250
+        assert inv_after["safety_stock"] == 60
+
+def test_scenario_5_patient_medicine_search(client):
+    """TEST 5: Patient searches medicine and views actual availability."""
+    client.post("/patient/register", data={
+        "full_name": "Alice Patient",
+        "contact_phone": "+91 98888 77777",
+        "delivery_address": "Green Avenue 12",
+        "username": "alice_p",
+        "password": "Password@123",
+        "confirm_password": "Password@123"
+    }, follow_redirects=True)
+
+    res = client.get("/patient/search?q=Paracetamol")
+    assert res.status_code == 200
+    assert b"Paracetamol 500mg" in res.data
+    assert b"In Stock" in res.data
+
+def test_scenario_6_7_8_delivery_order_workflow_and_stock_consistency(client, app_instance):
+    """TEST 6, 7 & 8: Patient orders delivery, pharmacist accepts/rejects, stock reserved and released safely."""
+    with app_instance.app_context():
+        db = get_db()
+        inv = db.execute("SELECT usable_quantity FROM inventory WHERE phc_id = 1 AND medicine_id = 2").fetchone()
+        initial_stock = inv["usable_quantity"]
+
+    order_res = client.post("/patient/delivery", data={
+        "phc_id": 1,
+        "medicine_id": 2,
+        "quantity": 10,
+        "patient_name": "Bob Patient",
+        "contact_phone": "+91 97777 66666",
+        "delivery_address": "North Sector 5",
+        "notes": "Homebound"
+    }, follow_redirects=True)
+    assert order_res.status_code == 200
+
+    with app_instance.app_context():
+        db = get_db()
+        inv_reserved = db.execute("SELECT usable_quantity FROM inventory WHERE phc_id = 1 AND medicine_id = 2").fetchone()
+        assert inv_reserved["usable_quantity"] == initial_stock - 10
+        order = db.execute("SELECT id, tracking_code FROM delivery_requests WHERE patient_name = 'Bob Patient' ORDER BY id DESC").fetchone()
+        order_id = order["id"]
+        tracking_code = order["tracking_code"]
+
+    client.get("/logout")
+    client.post("/login", data={"username": "green_valley_staff", "password": "Staff@123"}, follow_redirects=True)
+    accept_res = client.post(f"/phc/deliveries/accept/{order_id}", follow_redirects=True)
+    assert accept_res.status_code == 200
+
+    track_res = client.get(f"/patient/track?code={tracking_code}")
+    assert b"Accepted" in track_res.data
+
+    reject_res = client.post(f"/phc/deliveries/reject/{order_id}", data={"notes": "Out of delivery area"}, follow_redirects=True)
+    assert reject_res.status_code == 200
+
+    with app_instance.app_context():
+        db = get_db()
+        inv_restored = db.execute("SELECT usable_quantity FROM inventory WHERE phc_id = 1 AND medicine_id = 2").fetchone()
+        assert inv_restored["usable_quantity"] == initial_stock
+
+    track_res2 = client.get(f"/patient/track?code={tracking_code}")
+    assert b"Rejected" in track_res2.data
+
+def test_scenario_9_provider_replenishment_request(client, app_instance):
+    """TEST 9: Provider submits replenishment request, admin approves it, provider views status."""
+    client.post("/login", data={"username": "green_valley_staff", "password": "Staff@123"}, follow_redirects=True)
+    sub_res = client.post("/phc/replenishment/submit", data={
+        "medicine_id": 1,
+        "requested_quantity": 200,
+        "reason": "Seasonal surge replenishment"
+    }, follow_redirects=True)
+    assert sub_res.status_code == 200
+
+    with app_instance.app_context():
+        db = get_db()
+        req = db.execute("SELECT id, status FROM provider_stock_requests WHERE phc_id = 1 AND requested_quantity = 200 ORDER BY id DESC").fetchone()
+        req_id = req["id"]
+        assert req["status"] == "pending"
+
+    client.get("/logout")
+    client.post("/login", data={"username": "admin", "password": "Admin@123"}, follow_redirects=True)
+    admin_view = client.get("/admin/provider-requests")
+    assert admin_view.status_code == 200
+    assert b"Seasonal surge replenishment" in admin_view.data
+
+    app_res = client.post(f"/admin/provider-requests/approve/{req_id}", data={"admin_notes": "Approved central lot"}, follow_redirects=True)
+    assert app_res.status_code == 200
+
+    client.get("/logout")
+    client.post("/login", data={"username": "green_valley_staff", "password": "Staff@123"}, follow_redirects=True)
+    phc_req_view = client.get("/phc/replenishment")
+    assert phc_req_view.status_code == 200
+    assert b"Approved" in phc_req_view.data
+
+def test_scenario_10_pharmacist_cannot_access_other_phc_data(client, app_instance):
+    """TEST 10: Pharmacist cannot alter another PHC's orders."""
+    client.post("/login", data={"username": "sunrise_staff", "password": "Staff@123"}, follow_redirects=True)
+
+    with app_instance.app_context():
+        db = get_db()
+        gv_order = db.execute("SELECT id FROM delivery_requests WHERE phc_id = 1").fetchone()
+        gv_order_id = gv_order["id"]
+
+    res = client.post(f"/phc/deliveries/reject/{gv_order_id}", follow_redirects=True)
+    assert b"Delivery request not found" in res.data or res.status_code in (403, 302)
+
+def test_scenario_11_patient_cannot_access_admin_or_pharmacist_routes(client):
+    """TEST 11: Patient account cannot access administrator or pharmacist dashboards."""
+    client.post("/patient/register", data={
+        "full_name": "Charlie Patient",
+        "contact_phone": "+91 91111 22222",
+        "delivery_address": "Test Street 1",
+        "username": "charlie_p",
+        "password": "Password@123",
+        "confirm_password": "Password@123"
+    }, follow_redirects=True)
+
+    res_phc = client.get("/phc/dashboard")
+    assert res_phc.status_code == 403
+
+    res_admin = client.get("/admin/dashboard")
+    assert res_admin.status_code == 403
+
+

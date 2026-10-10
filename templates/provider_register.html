@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block title %}Register Primary Health Centre — Smart PHC{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center align-items-center py-4">
+  <div class="col-md-6 col-lg-5">
+    <div class="card card-phc shadow-sm">
+      <div class="card-body p-4">
+        <h2 class="h5 fw-bold text-center mb-3" style="color: var(--phc-forest);">Register Primary Health Centre</h2>
+
+        <form action="{{ url_for('provider_register') }}" method="POST">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+          <div class="mb-3">
+            <label for="name" class="form-label small fw-semibold">PHC Facility Name</label>
+            <input type="text" class="form-control" id="name" name="name" placeholder="e.g. East Valley Primary Health Centre" required>
+          </div>
+
+          <div class="mb-3">
+            <label for="location" class="form-label small fw-semibold">Location / Sub-District</label>
+            <input type="text" class="form-control" id="location" name="location" placeholder="e.g. East Block, Village Road" required>
+          </div>
+
+          <div class="mb-3">
+            <label for="contact_phone" class="form-label small fw-semibold">Contact Phone</label>
+            <input type="tel" class="form-control" id="contact_phone" name="contact_phone" placeholder="Official contact phone" required>
+          </div>
+
+          <div class="mb-3">
+            <label for="username" class="form-label small fw-semibold">Pharmacist Username</label>
+            <input type="text" class="form-control" id="username" name="username" placeholder="Pharmacist username" required>
+          </div>
+
+          <div class="mb-3">
+            <label for="password" class="form-label small fw-semibold">Password</label>
+            <input type="password" class="form-control" id="password" name="password" placeholder="Password (minimum 6 characters)" minlength="6" required>
+          </div>
+
+          <div class="mb-3">
+            <label for="confirm_password" class="form-label small fw-semibold">Confirm Password</label>
+            <input type="password" class="form-control" id="confirm_password" name="confirm_password" placeholder="Confirm Password" minlength="6" required>
+          </div>
+
+          <button type="submit" class="btn btn-phc-primary w-100 py-2 fw-semibold">
+            Submit Registration
+          </button>
+        </form>
+
+        <div class="mt-3 pt-3 border-top text-center small text-muted">
+          <div>Already registered? <a href="{{ url_for('pharmacist_login') }}" class="fw-semibold text-decoration-none">Pharmacist Sign In</a></div>
+          <div class="mt-2"><a href="{{ url_for('landing') }}" class="text-secondary text-decoration-none">← Back to Smart PHC</a></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

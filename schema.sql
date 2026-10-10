@@ -11,18 +11,21 @@ CREATE TABLE IF NOT EXISTS phcs (
     contact_phone TEXT NOT NULL,
     latitude REAL,
     longitude REAL,
-    approval_status TEXT NOT NULL DEFAULT 'approved' CHECK(approval_status IN ('pending', 'approved', 'rejected')),
+    approval_status TEXT NOT NULL DEFAULT 'approved' CHECK(approval_status IN ('pending', 'approved', 'rejected', 'suspended')),
     active_status INTEGER NOT NULL DEFAULT 1 CHECK(active_status IN (0, 1)),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- 2. Users (Role-based: admin, phc_staff)
+-- 2. Users (Role-based: admin, phc_staff, patient)
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     username TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,
-    role TEXT NOT NULL CHECK(role IN ('admin', 'phc_staff')),
+    role TEXT NOT NULL CHECK(role IN ('admin', 'phc_staff', 'patient')),
     phc_id INTEGER REFERENCES phcs(id) ON DELETE SET NULL,
+    full_name TEXT,
+    contact_phone TEXT,
+    delivery_address TEXT,
     active_status INTEGER NOT NULL DEFAULT 1 CHECK(active_status IN (0, 1)),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     last_login TIMESTAMP
@@ -114,7 +117,8 @@ CREATE TABLE IF NOT EXISTS delivery_requests (
     patient_name TEXT NOT NULL,
     contact_phone TEXT NOT NULL,
     delivery_address TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'Pending' CHECK(status IN ('Pending', 'Approved', 'Assigned', 'Out for delivery', 'Delivered', 'Rejected')),
+    user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    status TEXT NOT NULL DEFAULT 'Pending' CHECK(status IN ('Pending', 'Accepted', 'Approved', 'Assigned', 'Preparing', 'Out for delivery', 'Delivered', 'Rejected', 'Cancelled')),
     notes TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -134,6 +138,20 @@ CREATE TABLE IF NOT EXISTS audit_logs (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- 10. Provider Stock Replenishment Requests
+CREATE TABLE IF NOT EXISTS provider_stock_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    phc_id INTEGER NOT NULL REFERENCES phcs(id) ON DELETE CASCADE,
+    medicine_id INTEGER NOT NULL REFERENCES medicines(id) ON DELETE CASCADE,
+    requested_quantity INTEGER NOT NULL CHECK(requested_quantity > 0),
+    reason TEXT,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending', 'approved', 'rejected', 'fulfilled')),
+    admin_notes TEXT,
+    reviewed_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Indexes for high-performance operational lookups
 CREATE INDEX IF NOT EXISTS idx_inventory_phc_med ON inventory(phc_id, medicine_id);
 CREATE INDEX IF NOT EXISTS idx_stock_trans_phc ON stock_transactions(phc_id, created_at DESC);
@@ -143,4 +161,6 @@ CREATE INDEX IF NOT EXISTS idx_transfers_req_phc ON transfer_requests(requesting
 CREATE INDEX IF NOT EXISTS idx_transfers_sup_phc ON transfer_requests(supplying_phc_id, status);
 CREATE INDEX IF NOT EXISTS idx_transfers_status ON transfer_requests(status);
 CREATE INDEX IF NOT EXISTS idx_deliveries_phc_status ON delivery_requests(phc_id, status);
+CREATE INDEX IF NOT EXISTS idx_stock_req_phc ON provider_stock_requests(phc_id, status);
+CREATE INDEX IF NOT EXISTS idx_stock_req_status ON provider_stock_requests(status);
 CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at DESC);

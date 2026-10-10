@@ -5,12 +5,12 @@
 {% block content %}
 <div class="page-header d-flex flex-wrap justify-content-between align-items-center gap-3">
   <div>
-    <h1><i class="bi bi-box2-heart text-teal me-2"></i>Patient Medicine Delivery Requests</h1>
-    <p>Review, verify, and dispatch home delivery requests assigned to <strong>{{ phc.name }}</strong>.</p>
+    <h1>Patient Medicine Deliveries</h1>
+    <p>Manage home delivery orders assigned to <strong>{{ phc.name }}</strong>.</p>
   </div>
   <div class="d-flex gap-2">
-    <a href="{{ url_for('phc_inventory') }}" class="btn btn-outline-primary btn-sm">
-      <i class="bi bi-capsule me-1"></i> Check Inventory
+    <a href="{{ url_for('phc_inventory') }}" class="btn btn-phc-primary btn-sm">
+      Dispensary Inventory
     </a>
   </div>
 </div>
@@ -18,21 +18,27 @@
 <!-- Filter Tabs -->
 <div class="card card-phc mb-4">
   <div class="card-body p-3">
-    <div class="d-flex flex-wrap gap-2">
+    <div class="d-flex flex-wrap gap-1">
       <a href="{{ url_for('phc_deliveries') }}" class="btn btn-sm {% if not selected_status %}btn-dark{% else %}btn-outline-secondary{% endif %}">
-        All Requests ({{ deliveries|length }})
+        All Orders ({{ deliveries|length }})
       </a>
       <a href="{{ url_for('phc_deliveries', status='Pending') }}" class="btn btn-sm {% if selected_status == 'Pending' %}btn-warning text-dark{% else %}btn-outline-warning text-dark{% endif %}">
-        Pending Verification
+        Pending
       </a>
-      <a href="{{ url_for('phc_deliveries', status='Approved') }}" class="btn btn-sm {% if selected_status == 'Approved' %}btn-primary{% else %}btn-outline-primary{% endif %}">
-        Approved
+      <a href="{{ url_for('phc_deliveries', status='Accepted') }}" class="btn btn-sm {% if selected_status == 'Accepted' %}btn-success{% else %}btn-outline-success{% endif %}">
+        Accepted
       </a>
-      <a href="{{ url_for('phc_deliveries', status='Out for delivery') }}" class="btn btn-sm {% if selected_status == 'Out for delivery' %}btn-info text-dark{% else %}btn-outline-info text-dark{% endif %}">
+      <a href="{{ url_for('phc_deliveries', status='Preparing') }}" class="btn btn-sm {% if selected_status == 'Preparing' %}btn-info text-dark{% else %}btn-outline-info text-dark{% endif %}">
+        Preparing
+      </a>
+      <a href="{{ url_for('phc_deliveries', status='Out for delivery') }}" class="btn btn-sm {% if selected_status == 'Out for delivery' %}btn-primary{% else %}btn-outline-primary{% endif %}">
         Out for Delivery
       </a>
       <a href="{{ url_for('phc_deliveries', status='Delivered') }}" class="btn btn-sm {% if selected_status == 'Delivered' %}btn-success{% else %}btn-outline-success{% endif %}">
         Delivered
+      </a>
+      <a href="{{ url_for('phc_deliveries', status='Rejected') }}" class="btn btn-sm {% if selected_status == 'Rejected' %}btn-danger{% else %}btn-outline-danger{% endif %}">
+        Rejected
       </a>
     </div>
   </div>
@@ -41,115 +47,120 @@
 <!-- Deliveries Table -->
 <div class="card card-phc shadow-sm">
   <div class="card-body p-0">
-    <div class="table-responsive">
-      <table class="table table-phc">
-        <thead>
-          <tr>
-            <th>Tracking Ref</th>
-            <th>Patient Details</th>
-            <th>Medicine & Qty</th>
-            <th>Destination Address</th>
-            <th>Status</th>
-            <th>Notes</th>
-            <th>Date</th>
-            <th class="text-end">Update Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for d in deliveries %}
+    {% if deliveries %}
+      <div class="table-responsive">
+        <table class="table table-phc">
+          <thead>
             <tr>
-              <td><code>{{ d.tracking_code }}</code></td>
-              <td>
-                <div class="fw-bold text-dark">{{ d.patient_name }}</div>
-                <div class="small">
-                  <i class="bi bi-telephone text-primary me-1"></i>
-                  <a href="tel:{{ d.contact_phone }}" class="text-decoration-none">{{ d.contact_phone }}</a>
-                </div>
-              </td>
-              <td>
-                <div class="fw-semibold text-primary">{{ d.medicine_name }}</div>
-                <span class="badge bg-light text-dark border">{{ d.quantity }} units</span>
-              </td>
-              <td>
-                <small class="text-muted d-block" style="max-width: 250px;">{{ d.delivery_address }}</small>
-              </td>
-              <td>
-                {% if d.status == 'Delivered' %}
-                  <span class="badge bg-success-subtle text-success border border-success-subtle">Delivered</span>
-                {% elif d.status == 'Out for delivery' %}
-                  <span class="badge bg-info-subtle text-info border border-info-subtle">Out for Delivery</span>
-                {% elif d.status == 'Approved' %}
-                  <span class="badge bg-primary-subtle text-primary border border-primary-subtle">Approved</span>
-                {% elif d.status == 'Assigned' %}
-                  <span class="badge bg-secondary-subtle text-secondary border">Worker Assigned</span>
-                {% elif d.status == 'Rejected' %}
-                  <span class="badge bg-danger-subtle text-danger border border-danger-subtle">Rejected</span>
-                {% else %}
-                  <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">Pending</span>
-                {% endif %}
-              </td>
-              <td><small class="text-muted">{{ d.notes or '—' }}</small></td>
-              <td><small class="text-muted">{{ d.created_at|format_dt }}</small></td>
-              <td class="text-end">
-                <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#updateDeliveryModal{{ d.id }}">
-                  <i class="bi bi-pencil-square me-1"></i> Status
-                </button>
-
-                <!-- Update Delivery Modal -->
-                <div class="modal fade text-start" id="updateDeliveryModal{{ d.id }}" tabindex="-1" aria-hidden="true">
-                  <div class="modal-dialog">
-                    <div class="modal-content">
-                      <form action="{{ url_for('phc_delivery_update', delivery_id=d.id) }}" method="POST">
+              <th>Tracking Code</th>
+              <th>Patient</th>
+              <th>Contact</th>
+              <th>Delivery Address</th>
+              <th>Medicine</th>
+              <th>Quantity</th>
+              <th>Order Date</th>
+              <th>Status</th>
+              <th class="text-end">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for d in deliveries %}
+              <tr>
+                <td><code>{{ d.tracking_code }}</code></td>
+                <td><strong>{{ d.patient_name }}</strong></td>
+                <td>
+                  <small><i class="bi bi-telephone me-1"></i>{{ d.contact_phone }}</small>
+                </td>
+                <td><small class="text-muted d-block" style="max-width: 200px;">{{ d.delivery_address }}</small></td>
+                <td><strong>{{ d.medicine_name }}</strong></td>
+                <td>{{ d.quantity }} units</td>
+                <td><small class="text-muted">{{ d.created_at|format_dt }}</small></td>
+                <td>
+                  {% if d.status == 'Delivered' %}
+                    <span class="badge-risk safe">Delivered</span>
+                  {% elif d.status in ['Out for Delivery', 'Out for delivery'] %}
+                    <span class="badge-risk medium">Out for Delivery</span>
+                  {% elif d.status == 'Preparing' %}
+                    <span class="badge-risk medium">Preparing</span>
+                  {% elif d.status in ['Accepted', 'Approved'] %}
+                    <span class="badge-risk safe">Accepted</span>
+                  {% elif d.status == 'Rejected' %}
+                    <span class="badge-risk critical">Rejected</span>
+                  {% elif d.status == 'Cancelled' %}
+                    <span class="badge bg-secondary">Cancelled</span>
+                  {% else %}
+                    <span class="badge-risk high">Pending</span>
+                  {% endif %}
+                </td>
+                <td class="text-end">
+                  {% if d.status == 'Pending' %}
+                    <div class="btn-group btn-group-sm">
+                      <form action="{{ url_for('phc_delivery_accept', delivery_id=d.id) }}" method="POST" class="d-inline">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <div class="modal-header">
-                          <h5 class="modal-title fs-6 fw-bold">Update Delivery: {{ d.tracking_code }}</h5>
-                          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                        </div>
-                        <div class="modal-body">
-                          <div class="p-3 bg-light rounded mb-3 small">
-                            <div><strong>Patient:</strong> {{ d.patient_name }} ({{ d.contact_phone }})</div>
-                            <div><strong>Medicine:</strong> {{ d.medicine_name }} ({{ d.quantity }} units)</div>
-                            <div><strong>Address:</strong> {{ d.delivery_address }}</div>
-                          </div>
-
-                          <div class="mb-3">
-                            <label for="statusSelect{{ d.id }}" class="form-label small fw-bold">Change Status</label>
-                            <select class="form-select" id="statusSelect{{ d.id }}" name="status" required>
-                              <option value="Pending" {% if d.status == 'Pending' %}selected{% endif %}>Pending Verification</option>
-                              <option value="Approved" {% if d.status == 'Approved' %}selected{% endif %}>Approved (Prescription Verified)</option>
-                              <option value="Assigned" {% if d.status == 'Assigned' %}selected{% endif %}>Assigned to Health Worker</option>
-                              <option value="Out for delivery" {% if d.status == 'Out for delivery' %}selected{% endif %}>Out for Delivery</option>
-                              <option value="Delivered" {% if d.status == 'Delivered' %}selected{% endif %}>Delivered Successfully</option>
-                              <option value="Rejected" {% if d.status == 'Rejected' %}selected{% endif %}>Rejected (Out of Stock / Invalid)</option>
-                            </select>
-                          </div>
-
-                          <div class="mb-3">
-                            <label for="notesInput{{ d.id }}" class="form-label small fw-bold">Operational Notes</label>
-                            <textarea class="form-control" id="notesInput{{ d.id }}" name="notes" rows="2" placeholder="e.g. Assigned to ASHA health worker Sunita, scheduled for morning rounds...">{{ d.notes or '' }}</textarea>
-                          </div>
-                        </div>
-                        <div class="modal-footer">
-                          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-                          <button type="submit" class="btn btn-primary btn-sm">Save Update</button>
-                        </div>
+                        <button type="submit" class="btn btn-success btn-sm">Accept</button>
+                      </form>
+                      <form action="{{ url_for('phc_delivery_reject', delivery_id=d.id) }}" method="POST" class="d-inline ms-1">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <button type="submit" class="btn btn-outline-danger btn-sm">Reject</button>
                       </form>
                     </div>
-                  </div>
-                </div>
-                <!-- End Modal -->
-              </td>
-            </tr>
-          {% else %}
-            <tr>
-              <td colspan="8" class="text-center py-4 text-muted">
-                No delivery requests registered under this status.
-              </td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
+                  {% elif d.status in ['Accepted', 'Approved', 'Preparing', 'Out for delivery', 'Out for Delivery'] %}
+                    <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#updateDeliveryModal{{ d.id }}">
+                      Update Status
+                    </button>
+
+                    <!-- Update Status Modal -->
+                    <div class="modal fade text-start" id="updateDeliveryModal{{ d.id }}" tabindex="-1" aria-hidden="true">
+                      <div class="modal-dialog">
+                        <div class="modal-content">
+                          <form action="{{ url_for('phc_delivery_update', delivery_id=d.id) }}" method="POST">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <div class="modal-header">
+                              <h5 class="modal-title fs-6 fw-bold">Update Order: {{ d.tracking_code }}</h5>
+                              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                            </div>
+                            <div class="modal-body">
+                              <div class="p-2 bg-light rounded mb-3 small">
+                                <div><strong>Patient:</strong> {{ d.patient_name }} ({{ d.contact_phone }})</div>
+                                <div><strong>Medicine:</strong> {{ d.medicine_name }} ({{ d.quantity }} units)</div>
+                              </div>
+                              <div class="mb-3">
+                                <label for="statusSelect{{ d.id }}" class="form-label small fw-semibold">Next Status</label>
+                                <select class="form-select" id="statusSelect{{ d.id }}" name="status" required>
+                                  <option value="Accepted" {% if d.status == 'Accepted' %}selected{% endif %}>Accepted</option>
+                                  <option value="Preparing" {% if d.status == 'Preparing' %}selected{% endif %}>Preparing</option>
+                                  <option value="Out for delivery" {% if d.status in ['Out for delivery', 'Out for Delivery'] %}selected{% endif %}>Out for Delivery</option>
+                                  <option value="Delivered" {% if d.status == 'Delivered' %}selected{% endif %}>Delivered</option>
+                                  <option value="Rejected" {% if d.status == 'Rejected' %}selected{% endif %}>Rejected</option>
+                                </select>
+                              </div>
+                              <div class="mb-3">
+                                <label for="notesInput{{ d.id }}" class="form-label small fw-semibold">Notes</label>
+                                <textarea class="form-control" id="notesInput{{ d.id }}" name="notes" rows="2" placeholder="Fulfillment notes...">{{ d.notes or '' }}</textarea>
+                              </div>
+                            </div>
+                            <div class="modal-footer">
+                              <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                              <button type="submit" class="btn btn-phc-primary btn-sm">Save Status</button>
+                            </div>
+                          </form>
+                        </div>
+                      </div>
+                    </div>
+                  {% else %}
+                    <span class="small text-muted">Completed</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="p-4 text-center text-muted">
+        <p class="mb-0">No patient delivery requests found for this status.</p>
+      </div>
+    {% endif %}
   </div>
 </div>
 {% endblock %}

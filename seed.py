@@ -71,28 +71,34 @@ def _run_seeding(conn):
     admin_pw = generate_password_hash("Admin@123")
     staff_pw = generate_password_hash("Staff@123")
 
+    patient_pw = generate_password_hash("Patient@123")
+
     users_data = [
-        ("admin", admin_pw, "admin", None),
-        ("green_valley_staff", staff_pw, "phc_staff", phc_map.get("Green Valley PHC")),
-        ("sunrise_staff", staff_pw, "phc_staff", phc_map.get("Sunrise Lake PHC")),
-        ("hillside_staff", staff_pw, "phc_staff", phc_map.get("Hillside Community Health Centre")),
-        ("riverside_staff", staff_pw, "phc_staff", phc_map.get("Riverside Rural PHC")),
-        ("central_staff", staff_pw, "phc_staff", phc_map.get("District Central PHC")),
-        ("pine_staff", staff_pw, "phc_staff", phc_map.get("Pine Forest PHC")),
-        ("orchard_staff", staff_pw, "phc_staff", phc_map.get("Orchard Park PHC")),
+        ("admin", admin_pw, "admin", None, "District Medical Officer", None, None),
+        ("green_valley_staff", staff_pw, "phc_staff", phc_map.get("Green Valley PHC"), "Pharmacist Green Valley", "+91 80 2345 6701", "Sector 4"),
+        ("sunrise_staff", staff_pw, "phc_staff", phc_map.get("Sunrise Lake PHC"), "Pharmacist Sunrise Lake", "+91 80 2345 6702", "Lakeside Road"),
+        ("hillside_staff", staff_pw, "phc_staff", phc_map.get("Hillside Community Health Centre"), "Pharmacist Hillside", "+91 80 2345 6703", "Hill Crest Ave"),
+        ("riverside_staff", staff_pw, "phc_staff", phc_map.get("Riverside Rural PHC"), "Pharmacist Riverside", "+91 80 2345 6704", "River Bank Village"),
+        ("central_staff", staff_pw, "phc_staff", phc_map.get("District Central PHC"), "Pharmacist Central", "+91 80 2345 6705", "Civil Hospital Complex"),
+        ("pine_staff", staff_pw, "phc_staff", phc_map.get("Pine Forest PHC"), "Pharmacist Pine Forest", "+91 80 2345 6706", "Woodlands Road"),
+        ("orchard_staff", staff_pw, "phc_staff", phc_map.get("Orchard Park PHC"), "Pharmacist Orchard Park", "+91 80 2345 6707", "Old Orchard Market"),
+        ("patient_jane", patient_pw, "patient", None, "Jane Doe", "+91 98450 11223", "House 14B, Green Valley Cross Road"),
     ]
 
-    for uname, pw_hash, role, phc_id in users_data:
+    for uname, pw_hash, role, phc_id, full_name, phone, addr in users_data:
         conn.execute(
             """
-            INSERT INTO users (username, password_hash, role, phc_id, active_status)
-            VALUES (?, ?, ?, ?, 1)
+            INSERT INTO users (username, password_hash, role, phc_id, full_name, contact_phone, delivery_address, active_status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 1)
             ON CONFLICT(username) DO UPDATE SET
                 password_hash=excluded.password_hash,
                 role=excluded.role,
-                phc_id=excluded.phc_id
+                phc_id=excluded.phc_id,
+                full_name=excluded.full_name,
+                contact_phone=excluded.contact_phone,
+                delivery_address=excluded.delivery_address
             """,
-            (uname, pw_hash, role, phc_id)
+            (uname, pw_hash, role, phc_id, full_name, phone, addr)
         )
     conn.commit()
 
@@ -315,6 +321,27 @@ def _run_seeding(conn):
             """,
             (u_id, uname, role, action, ent_type, ent_id, details, ip)
         )
+    conn.commit()
+
+    # 9. Seed Provider Stock Replenishment Requests
+    sample_stock_requests = [
+        (gv_id, para_id, 200, "Seasonal viral flu clinic surge replenishment request", "pending", None, None),
+        (sun_id, med_map.get("Metformin 500mg"), 150, "Monthly chronic diabetes patient buffer stock replenishment", "approved", "Approved for monthly allocation", u_admin),
+    ]
+
+    for p_id, m_id, qty, rsn, stat, notes, rev_id in sample_stock_requests:
+        exists = conn.execute(
+            "SELECT id FROM provider_stock_requests WHERE phc_id = ? AND medicine_id = ? AND reason = ?",
+            (p_id, m_id, rsn)
+        ).fetchone()
+        if not exists:
+            conn.execute(
+                """
+                INSERT INTO provider_stock_requests (phc_id, medicine_id, requested_quantity, reason, status, admin_notes, reviewed_by_user_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (p_id, m_id, qty, rsn, stat, notes, rev_id)
+            )
     conn.commit()
 
 if __name__ == "__main__":

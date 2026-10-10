@@ -1,78 +1,63 @@
 {% extends "base.html" %}
 
-{% block title %}Sign In — Smart PHC Staff & Administration{% endblock %}
+{% block title %}
+  {% if role == 'admin' %}District Administrator Login
+  {% elif role == 'phc_staff' or role == 'pharmacist' %}Medical Pharmacist Login
+  {% elif role == 'patient' %}Patient Login
+  {% else %}Sign In
+  {% endif %} — Smart PHC
+{% endblock %}
 
 {% block content %}
 <div class="row justify-content-center align-items-center py-4">
-  <div class="col-md-6 col-lg-5">
-    <div class="card card-phc shadow-lg border-top border-4 border-primary">
-      <div class="card-body p-4 p-md-5">
-        <div class="text-center mb-4">
-          <div class="stat-icon primary mx-auto mb-2" style="width: 56px; height: 56px;">
-            <i class="bi bi-shield-lock-fill fs-3"></i>
-          </div>
-          <h2 class="h4 fw-bold text-dark">Authorized Healthcare Sign In</h2>
-          <p class="text-muted small">Access PHC inventory monitoring, predictions, or district administration.</p>
-        </div>
+  <div class="col-md-5 col-lg-4">
+    <div class="card card-phc shadow-sm">
+      <div class="card-body p-4">
+        <h2 class="h5 fw-bold text-center mb-3" style="color: var(--phc-forest);">
+          {% if role == 'admin' %}
+            District Administrator Login
+          {% elif role == 'phc_staff' or role == 'pharmacist' %}
+            Medical Pharmacist Login
+          {% elif role == 'patient' %}
+            Patient Login
+          {% else %}
+            Sign In
+          {% endif %}
+        </h2>
 
         <form action="{{ url_for('login') }}" method="POST">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          {% if role %}
+            <input type="hidden" name="expected_role" value="{{ role }}">
+          {% endif %}
 
           <div class="mb-3">
-            <label for="username" class="form-label small fw-bold">Username</label>
-            <div class="input-group">
-              <span class="input-group-text bg-light"><i class="bi bi-person"></i></span>
-              <input type="text" class="form-control" id="username" name="username" placeholder="Enter username" required autofocus>
-            </div>
+            <label for="username" class="form-label small fw-semibold">Username</label>
+            <input type="text" class="form-control" id="username" name="username" placeholder="Username" required autofocus>
           </div>
 
-          <div class="mb-4">
-            <label for="password" class="form-label small fw-bold">Password</label>
-            <div class="input-group">
-              <span class="input-group-text bg-light"><i class="bi bi-key"></i></span>
-              <input type="password" class="form-control" id="password" name="password" placeholder="Enter password" required>
-            </div>
+          <div class="mb-3">
+            <label for="password" class="form-label small fw-semibold">Password</label>
+            <input type="password" class="form-control" id="password" name="password" placeholder="Password" required>
           </div>
 
-          <button type="submit" class="btn btn-phc-primary w-100 py-2 fw-bold">
-            <i class="bi bi-box-arrow-in-right me-1"></i> Sign In to Portal
+          <button type="submit" class="btn btn-phc-primary w-100 py-2 fw-semibold">
+            Sign In
           </button>
         </form>
 
-        <!-- Hackathon Quick Credentials Autofill -->
-        <div class="mt-4 pt-4 border-top">
-          <div class="small fw-bold text-muted mb-2 text-center text-uppercase" style="letter-spacing: 0.05em;">
-            Quick Demo Autofill
-          </div>
-          <div class="d-grid gap-2">
-            <button type="button" class="btn btn-sm btn-outline-dark text-start" onclick="fillCreds('admin', 'Admin@123')">
-              <i class="bi bi-shield-shaded me-1 text-primary"></i> <strong>District Administrator</strong> (Full Overseer)
-            </button>
-            <button type="button" class="btn btn-sm btn-outline-danger text-start" onclick="fillCreds('green_valley_staff', 'Staff@123')">
-              <i class="bi bi-exclamation-triangle-fill me-1 text-danger"></i> <strong>Green Valley Staff</strong> (Shortage Clinic)
-            </button>
-            <button type="button" class="btn btn-sm btn-outline-success text-start" onclick="fillCreds('sunrise_staff', 'Staff@123')">
-              <i class="bi bi-hospital me-1 text-success"></i> <strong>Sunrise Lake Staff</strong> (Surplus Clinic)
-            </button>
+        <div class="mt-3 pt-3 border-top text-center small text-muted">
+          {% if role == 'patient' %}
+            <div>Don't have an account? <a href="{{ url_for('patient_register') }}" class="fw-semibold text-decoration-none">Register as Patient</a></div>
+          {% elif role == 'phc_staff' or role == 'pharmacist' %}
+            <div>New provider? <a href="{{ url_for('provider_register') }}" class="fw-semibold text-decoration-none">Register Primary Health Centre</a></div>
+          {% endif %}
+          <div class="mt-2">
+            <a href="{{ url_for('landing') }}" class="text-secondary text-decoration-none">← Back to Smart PHC</a>
           </div>
         </div>
       </div>
     </div>
-
-    <div class="text-center mt-3 text-muted small">
-      <a href="{{ url_for('patient_search') }}" class="text-decoration-none">
-        <i class="bi bi-arrow-left me-1"></i> Return to Public Patient Medicine Search
-      </a>
-    </div>
   </div>
 </div>
-{% endblock %}
-
-{% block scripts %}
-<script>
-  function fillCreds(u, p) {
-    document.getElementById('username').value = u;
-    document.getElementById('password').value = p;
-  }
-</script>
 {% endblock %}

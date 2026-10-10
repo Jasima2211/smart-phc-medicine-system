@@ -1,31 +1,31 @@
 {% extends "base.html" %}
 
-{% block title %}Inventory & Stock Predictions — {{ phc.name }} | Smart PHC{% endblock %}
+{% block title %}Dispensary Inventory — {{ phc.name }} | Smart PHC{% endblock %}
 
 {% block content %}
 <div class="page-header d-flex flex-wrap justify-content-between align-items-center gap-3">
   <div>
-    <h1><i class="bi bi-capsule-pill text-teal me-2"></i>Dispensary Inventory & Stock Depletion Predictions</h1>
-    <p>Real-time usable quantities, velocity forecasting, and replenishment safety margins for <strong>{{ phc.name }}</strong>.</p>
+    <h1>Dispensary Medicine Inventory</h1>
+    <p>Monitor usable stock, update quantities, configure safety levels, and forecast depletion for <strong>{{ phc.name }}</strong>.</p>
   </div>
   <div class="d-flex gap-2">
-    <a href="{{ url_for('phc_transfers') }}" class="btn btn-outline-primary btn-sm">
-      <i class="bi bi-arrow-left-right me-1"></i> Emergency Transfers
+    <button type="button" class="btn btn-phc-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addMedicineModal">
+      + Add Medicine to Dispensary
+    </button>
+    <a href="{{ url_for('phc_replenishment') }}" class="btn btn-outline-secondary btn-sm">
+      Request Replenishment
     </a>
   </div>
 </div>
 
-<!-- Filter & Search Bar -->
+<!-- Filters -->
 <div class="card card-phc mb-4">
   <div class="card-body p-3">
-    <div class="row g-3 align-items-center">
+    <div class="row g-2 align-items-center">
       <div class="col-md-5">
-        <div class="input-group">
-          <span class="input-group-text bg-light"><i class="bi bi-search"></i></span>
-          <input type="text" id="tableSearchInput" data-target-table="inventoryTable" class="form-control" placeholder="Filter medicines by name, category, or risk...">
-        </div>
+        <input type="text" id="tableSearchInput" data-target-table="inventoryTable" class="form-control form-control-sm" placeholder="Filter medicines by name, category, or status...">
       </div>
-      <div class="col-md-7 d-flex flex-wrap justify-content-md-end gap-2">
+      <div class="col-md-7 d-flex justify-content-md-end flex-wrap gap-1">
         <a href="{{ url_for('phc_inventory') }}" class="btn btn-sm {% if not selected_risk %}btn-dark{% else %}btn-outline-secondary{% endif %}">
           All ({{ inventory_items|length }})
         </a>
@@ -33,7 +33,7 @@
           Critical
         </a>
         <a href="{{ url_for('phc_inventory', risk='High') }}" class="btn btn-sm {% if selected_risk == 'High' %}btn-warning text-dark{% else %}btn-outline-warning text-dark{% endif %}">
-          High Risk
+          Low / High Risk
         </a>
         <a href="{{ url_for('phc_inventory', risk='Medium') }}" class="btn btn-sm {% if selected_risk == 'Medium' %}btn-info text-dark{% else %}btn-outline-info text-dark{% endif %}">
           Medium
@@ -56,11 +56,11 @@
             <th>Medicine Name</th>
             <th>Usable Stock</th>
             <th>Safety Stock</th>
-            <th>Daily Velocity</th>
-            <th>Replenish Lead Time</th>
-            <th>Days Remaining</th>
-            <th>Est. Stock-out Date</th>
+            <th>Daily Usage</th>
+            <th>Lead Time</th>
+            <th>Days Left</th>
             <th>Risk Level</th>
+            <th>Last Updated</th>
             <th class="text-end">Actions</th>
           </tr>
         </thead>
@@ -69,7 +69,7 @@
             <tr>
               <td>
                 <div class="fw-bold text-dark">{{ item.medicine_name }}</div>
-                <div class="small text-muted">{{ item.dosage_form or item.unit }} • {{ item.category }}</div>
+                <small class="text-muted">{{ item.dosage_form or item.unit }} • {{ item.category }}</small>
               </td>
               <td>
                 <span class="fs-6 fw-bold {% if item.usable_quantity == 0 %}text-danger{% elif item.usable_quantity < item.safety_stock %}text-warning-emphasis{% else %}text-success{% endif %}">
@@ -77,12 +77,12 @@
                 </span>
                 <small class="text-muted">{{ item.unit }}</small>
               </td>
-              <td><span class="text-muted fw-semibold">{{ item.safety_stock }}</span></td>
+              <td>{{ item.safety_stock }}</td>
               <td>
                 {% if item.avg_daily_consumption > 0 %}
-                  <span class="fw-semibold">{{ item.avg_daily_consumption }}</span> <small class="text-muted">/day</small>
+                  {{ item.avg_daily_consumption }} /day
                 {% else %}
-                  <span class="badge bg-light text-secondary border">0.0 /day</span>
+                  <span class="text-muted small">0.0 /day</span>
                 {% endif %}
               </td>
               <td>{{ item.replenishment_lead_time_days }} days</td>
@@ -92,19 +92,15 @@
                     {{ item.prediction.days_remaining_display }}
                   </strong>
                 {% else %}
-                  <small class="text-muted fst-italic">Insufficient data</small>
+                  <small class="text-muted">Insufficient data</small>
                 {% endif %}
-              </td>
-              <td>
-                <small class="{% if item.prediction.risk_level == 'Critical' %}text-danger fw-bold{% else %}text-secondary{% endif %}">
-                  {{ item.prediction.predicted_stockout_display }}
-                </small>
               </td>
               <td>
                 <span class="badge-risk {{ item.prediction.risk_level|lower }}">
                   {{ item.prediction.risk_level }}
                 </span>
               </td>
+              <td><small class="text-muted">{{ item.last_updated|format_dt }}</small></td>
               <td class="text-end">
                 <div class="btn-group btn-group-sm">
                   <!-- Receive Inbound Stock -->
@@ -115,10 +111,10 @@
                           data-med-name="{{ item.medicine_name }}"
                           data-usable="{{ item.usable_quantity }}"
                           title="Receive Stock">
-                    <i class="bi bi-plus-lg"></i> In
+                    + Receive
                   </button>
                   
-                  <!-- Issue Outbound Stock -->
+                  <!-- Dispense Outbound Stock -->
                   <button type="button" class="btn btn-outline-danger" 
                           data-bs-toggle="modal" data-bs-target="#stockActionModal"
                           data-action="issue"
@@ -126,107 +122,60 @@
                           data-med-name="{{ item.medicine_name }}"
                           data-usable="{{ item.usable_quantity }}"
                           title="Dispense Stock">
-                    <i class="bi bi-dash-lg"></i> Out
+                    - Dispense
                   </button>
 
-                  <!-- Adjust Count -->
+                  <!-- Update Stock Levels / Settings -->
                   <button type="button" class="btn btn-outline-secondary" 
-                          data-bs-toggle="modal" data-bs-target="#stockActionModal"
-                          data-action="adjust"
-                          data-med-id="{{ item.medicine_id }}"
-                          data-med-name="{{ item.medicine_name }}"
-                          data-usable="{{ item.usable_quantity }}"
-                          title="Adjust Count">
-                    <i class="bi bi-pencil"></i>
+                          data-bs-toggle="modal" data-bs-target="#updateLevelsModal{{ item.id }}"
+                          title="Update Levels & Settings">
+                    <i class="bi bi-gear"></i>
                   </button>
 
-                  <!-- Prediction Rationale Modal Trigger -->
-                  <button type="button" class="btn btn-outline-info text-dark" 
-                          data-bs-toggle="modal" data-bs-target="#predictionModal{{ item.id }}"
-                          title="View Prediction Rationale">
-                    <i class="bi bi-info-circle"></i>
-                  </button>
-
-                  <!-- Surplus Transfer Match -->
+                  <!-- Surplus Matching -->
                   <a href="{{ url_for('transfer_recommendations', medicine_id=item.medicine_id) }}" 
-                     class="btn btn-phc-accent" title="Find Nearby Surplus Health Centres">
-                    <i class="bi bi-truck"></i>
+                     class="btn btn-phc-primary" title="Find Nearby Surplus">
+                    Surplus
                   </a>
                 </div>
 
-                <!-- Prediction Explanation Modal for this Row -->
-                <div class="modal fade text-start" id="predictionModal{{ item.id }}" tabindex="-1" aria-hidden="true">
+                <!-- Update Levels Modal -->
+                <div class="modal fade text-start" id="updateLevelsModal{{ item.id }}" tabindex="-1" aria-hidden="true">
                   <div class="modal-dialog">
                     <div class="modal-content">
-                      <div class="modal-header">
-                        <h5 class="modal-title fs-6 fw-bold">
-                          <i class="bi bi-calculator me-1 text-primary"></i>
-                          Prediction Rationale: {{ item.medicine_name }}
-                        </h5>
-                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                      </div>
-                      <div class="modal-body">
-                        <div class="d-flex justify-content-between align-items-center mb-3 p-2 bg-light rounded">
-                          <span class="small text-muted">Assigned Risk Level:</span>
-                          <span class="badge-risk {{ item.prediction.risk_level|lower }} fs-6">
-                            {{ item.prediction.risk_level }}
-                          </span>
+                      <form action="{{ url_for('phc_inventory_update_levels', inventory_id=item.id) }}" method="POST">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <div class="modal-header">
+                          <h5 class="modal-title fs-6 fw-bold">Update Stock Settings: {{ item.medicine_name }}</h5>
+                          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                         </div>
-
-                        <div class="prediction-box mb-3">
-                          <h6 class="fw-bold mb-1 text-dark">Rule-Based Explanation:</h6>
-                          <p class="mb-0 text-dark">{{ item.prediction.explanation }}</p>
+                        <div class="modal-body">
+                          <div class="mb-3">
+                            <label class="form-label small fw-semibold">Usable Quantity</label>
+                            <input type="number" name="usable_quantity" class="form-control" value="{{ item.usable_quantity }}" min="0" required>
+                          </div>
+                          <div class="mb-3">
+                            <label class="form-label small fw-semibold">Safety Stock Threshold</label>
+                            <input type="number" name="safety_stock" class="form-control" value="{{ item.safety_stock }}" min="0" required>
+                          </div>
+                          <div class="mb-3">
+                            <label class="form-label small fw-semibold">Average Daily Consumption</label>
+                            <input type="number" step="0.1" name="avg_daily_consumption" class="form-control" value="{{ item.avg_daily_consumption }}" min="0" required>
+                          </div>
+                          <div class="mb-3">
+                            <label class="form-label small fw-semibold">Replenishment Lead Time (Days)</label>
+                            <input type="number" name="replenishment_lead_time_days" class="form-control" value="{{ item.replenishment_lead_time_days }}" min="1" required>
+                          </div>
                         </div>
-
-                        <div class="table-responsive">
-                          <table class="table table-sm table-bordered small">
-                            <tbody>
-                              <tr>
-                                <th class="table-light">Current Usable Stock:</th>
-                                <td>{{ item.usable_quantity }} {{ item.unit }}</td>
-                              </tr>
-                              <tr>
-                                <th class="table-light">Configured Safety Reserve:</th>
-                                <td>{{ item.safety_stock }} {{ item.unit }}</td>
-                              </tr>
-                              <tr>
-                                <th class="table-light">Average Daily Consumption:</th>
-                                <td>{{ item.avg_daily_consumption }} units/day</td>
-                              </tr>
-                              <tr>
-                                <th class="table-light">Replenishment Lead Time:</th>
-                                <td>{{ item.replenishment_lead_time_days }} days</td>
-                              </tr>
-                              <tr>
-                                <th class="table-light">Remaining Days of Stock:</th>
-                                <td><strong>{{ item.prediction.days_remaining_display }}</strong></td>
-                              </tr>
-                              <tr>
-                                <th class="table-light">Forecasted Stock-out Date:</th>
-                                <td><strong>{{ item.prediction.predicted_stockout_display }}</strong></td>
-                              </tr>
-                            </tbody>
-                          </table>
+                        <div class="modal-footer">
+                          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                          <button type="submit" class="btn btn-phc-primary btn-sm">Save Changes</button>
                         </div>
-
-                        <div class="alert alert-secondary small mb-0">
-                          <i class="bi bi-info-circle me-1"></i>
-                          Forecasting strictly uses verified dispensary consumption velocity. Stock is classified Critical when remaining days are less than or equal to the replenishment lead time window.
-                        </div>
-                      </div>
-                      <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Close</button>
-                        {% if item.prediction.risk_level in ['Critical', 'High'] %}
-                          <a href="{{ url_for('transfer_recommendations', medicine_id=item.medicine_id) }}" class="btn btn-phc-accent btn-sm">
-                            <i class="bi bi-truck me-1"></i> Search Surplus Matches
-                          </a>
-                        {% endif %}
-                      </div>
+                      </form>
                     </div>
                   </div>
                 </div>
-                <!-- End Prediction Modal -->
-
+                <!-- End Modal -->
               </td>
             </tr>
           {% else %}
@@ -242,7 +191,53 @@
   </div>
 </div>
 
-<!-- Shared Stock Action Modal (Receive / Issue / Adjust) -->
+<!-- Add Medicine to PHC Modal -->
+<div class="modal fade" id="addMedicineModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form action="{{ url_for('phc_inventory_add') }}" method="POST">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="modal-header">
+          <h5 class="modal-title fs-6 fw-bold">Add Medicine to Dispensary</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="new_medicine_id" class="form-label small fw-semibold">Select Medicine Catalogue Item</label>
+            <select class="form-select" id="new_medicine_id" name="medicine_id" required>
+              <option value="">Select Medicine...</option>
+              {% for m in all_catalogue_medicines %}
+                <option value="{{ m.id }}">{{ m.name }} ({{ m.dosage_form or m.unit }})</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-3">
+            <label for="initial_quantity" class="form-label small fw-semibold">Initial Usable Quantity</label>
+            <input type="number" class="form-control" id="initial_quantity" name="usable_quantity" value="50" min="0" required>
+          </div>
+          <div class="mb-3">
+            <label for="initial_safety_stock" class="form-label small fw-semibold">Safety Stock Threshold</label>
+            <input type="number" class="form-control" id="initial_safety_stock" name="safety_stock" value="40" min="0" required>
+          </div>
+          <div class="mb-3">
+            <label for="initial_daily_consumption" class="form-label small fw-semibold">Average Daily Consumption</label>
+            <input type="number" step="0.1" class="form-control" id="initial_daily_consumption" name="avg_daily_consumption" value="5.0" min="0" required>
+          </div>
+          <div class="mb-3">
+            <label for="initial_lead_time" class="form-label small fw-semibold">Replenishment Lead Time (Days)</label>
+            <input type="number" class="form-control" id="initial_lead_time" name="replenishment_lead_time_days" value="7" min="1" required>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-phc-primary btn-sm">Add to Inventory</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Shared Stock Action Modal (Receive / Issue) -->
 <div class="modal fade" id="stockActionModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog">
     <div class="modal-content">
@@ -256,26 +251,26 @@
           <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
         <div class="modal-body">
-          <div class="p-3 bg-light rounded mb-3">
+          <div class="p-2 bg-light rounded mb-3">
             <div class="fw-bold fs-6 text-dark" id="modalMedNameDisplay">Medicine Name</div>
             <div class="small text-muted mt-1">
-              Current Usable Stock: <strong class="text-primary fs-6" id="modalCurrentUsable">0</strong> units
+              Current Usable Stock: <strong class="text-primary" id="modalCurrentUsable">0</strong> units
             </div>
           </div>
 
           <div class="mb-3">
-            <label for="modalQuantityInput" class="form-label small fw-bold" id="modalQuantityLabel">Quantity (Units)</label>
+            <label for="modalQuantityInput" class="form-label small fw-semibold" id="modalQuantityLabel">Quantity (Units)</label>
             <input type="number" class="form-control" id="modalQuantityInput" name="quantity" min="1" required>
           </div>
 
           <div class="mb-3">
-            <label for="modalNotesInput" class="form-label small fw-bold">Notes / Reason <span class="text-muted">(Optional)</span></label>
-            <textarea class="form-control" id="modalNotesInput" name="notes" rows="2" placeholder="e.g. Inbound batch receipt, outpatient clinic dispensing, or periodic physical count adjustment..."></textarea>
+            <label for="modalNotesInput" class="form-label small fw-semibold">Notes / Reason (Optional)</label>
+            <textarea class="form-control" id="modalNotesInput" name="notes" rows="2" placeholder="Notes..."></textarea>
           </div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-          <button type="submit" class="btn btn-primary btn-sm" id="stockModalSubmitBtn">Confirm</button>
+          <button type="submit" class="btn btn-phc-primary btn-sm" id="stockModalSubmitBtn">Confirm</button>
         </div>
       </form>
     </div>

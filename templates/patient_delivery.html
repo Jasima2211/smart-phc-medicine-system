@@ -1,26 +1,23 @@
 {% extends "base.html" %}
 
-{% block title %}Request Medicine Delivery | Smart PHC{% endblock %}
+{% block title %}Request Medicine Delivery — Smart PHC{% endblock %}
 
 {% block content %}
 <div class="row justify-content-center">
-  <div class="col-lg-8 col-md-10">
+  <div class="col-lg-7 col-md-9">
     <div class="page-header">
-      <h1><i class="bi bi-box2-heart text-teal me-2"></i>Patient Medicine Delivery Request</h1>
-      <p>Submit a request for community health worker delivery if you or your family member are unable to travel.</p>
+      <h1>Request Medicine Delivery</h1>
+      <p>Submit a medicine delivery request to your Primary Health Centre.</p>
     </div>
 
     <div class="card card-phc shadow-sm">
-      <div class="card-header bg-white">
-        <span class="fw-bold"><i class="bi bi-card-checklist text-primary me-2"></i>Delivery Request Details</span>
-      </div>
       <div class="card-body p-4">
         <form action="{{ url_for('patient_delivery') }}" method="POST">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
           <div class="row g-3 mb-3">
             <div class="col-md-6">
-              <label for="phc_id" class="form-label small fw-bold">Primary Health Centre <span class="text-danger">*</span></label>
+              <label for="phc_id" class="form-label small fw-semibold">Primary Health Centre</label>
               <select class="form-select" id="phc_id" name="phc_id" required>
                 <option value="">Select Health Centre...</option>
                 {% for p in all_phcs %}
@@ -32,7 +29,7 @@
             </div>
 
             <div class="col-md-6">
-              <label for="medicine_id" class="form-label small fw-bold">Medicine Requested <span class="text-danger">*</span></label>
+              <label for="medicine_id" class="form-label small fw-semibold">Medicine</label>
               <select class="form-select" id="medicine_id" name="medicine_id" required>
                 <option value="">Select Medicine...</option>
                 {% for m in all_medicines %}
@@ -46,49 +43,36 @@
 
           <div class="row g-3 mb-3">
             <div class="col-md-4">
-              <label for="quantity" class="form-label small fw-bold">Quantity Needed (Units) <span class="text-danger">*</span></label>
-              <input type="number" class="form-control" id="quantity" name="quantity" min="1" max="100" value="10" required>
-              <div class="form-text">Subject to prescription and available buffer.</div>
+              <label for="quantity" class="form-label small fw-semibold">Quantity</label>
+              <input type="number" class="form-control" id="quantity" name="quantity" min="1" max="1000" value="10" required>
             </div>
 
             <div class="col-md-8">
-              <label for="patient_name" class="form-label small fw-bold">Patient / Caregiver Full Name <span class="text-danger">*</span></label>
-              <input type="text" class="form-control" id="patient_name" name="patient_name" placeholder="e.g. Maria Gonzalez" required>
+              <label for="patient_name" class="form-label small fw-semibold">Patient Name</label>
+              <input type="text" class="form-control" id="patient_name" name="patient_name" value="{{ default_patient_name or '' }}" placeholder="Patient Name" required>
             </div>
           </div>
 
           <div class="row g-3 mb-3">
             <div class="col-md-6">
-              <label for="contact_phone" class="form-label small fw-bold">Contact Phone Number <span class="text-danger">*</span></label>
-              <input type="tel" class="form-control" id="contact_phone" name="contact_phone" placeholder="e.g. +91 98450 12345" required>
-              <div class="form-text">Health worker will call this number prior to dispatch.</div>
+              <label for="contact_phone" class="form-label small fw-semibold">Contact Phone</label>
+              <input type="tel" class="form-control" id="contact_phone" name="contact_phone" value="{{ default_phone or '' }}" placeholder="Contact Phone" required>
             </div>
 
             <div class="col-md-6">
-              <label for="delivery_address" class="form-label small fw-bold">Delivery Address / Landmark <span class="text-danger">*</span></label>
-              <textarea class="form-control" id="delivery_address" name="delivery_address" rows="2" placeholder="House #, Street name, Village/Area landmark..." required></textarea>
+              <label for="delivery_address" class="form-label small fw-semibold">Delivery Address</label>
+              <textarea class="form-control" id="delivery_address" name="delivery_address" rows="2" placeholder="Delivery Address" required>{{ default_address or '' }}</textarea>
             </div>
           </div>
 
           <div class="mb-4">
-            <label for="notes" class="form-label small fw-bold">Reason / Clinical Notes (Optional)</label>
-            <textarea class="form-control" id="notes" name="notes" rows="2" placeholder="e.g. Elderly patient with chronic arthritis, child fever triage, or unable to arrange transport..."></textarea>
-          </div>
-
-          <div class="alert alert-warning small d-flex gap-2 align-items-center">
-            <i class="bi bi-exclamation-triangle-fill fs-5"></i>
-            <div>
-              <strong>Important:</strong> Submission does not guarantee delivery. Requests are subject to clinical verification, active prescription status, and staff availability.
-            </div>
+            <label for="notes" class="form-label small fw-semibold">Notes (Optional)</label>
+            <textarea class="form-control" id="notes" name="notes" rows="2" placeholder="Prescription details or delivery instructions..."></textarea>
           </div>
 
           <div class="d-flex justify-content-between align-items-center">
-            <a href="{{ url_for('patient_search') }}" class="btn btn-outline-secondary">
-              <i class="bi bi-arrow-left me-1"></i> Back to Search
-            </a>
-            <button type="submit" class="btn btn-phc-accent px-4 fw-bold">
-              <i class="bi bi-send-check me-1"></i> Submit Delivery Request
-            </button>
+            <a href="{{ url_for('patient_search') }}" class="btn btn-outline-secondary btn-sm">Cancel</a>
+            <button type="submit" class="btn btn-phc-primary px-4 fw-semibold">Submit Order</button>
           </div>
         </form>
       </div>

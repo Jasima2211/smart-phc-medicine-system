@@ -1,4 +1,3 @@
- HEAD
 # Smart PHC — Medicine Stock Prediction & Early Warning System
 
 A healthcare supply-chain decision-support system for Primary Health Centres (PHCs) featuring **predictive stock monitoring**, **early warnings**, **distance-aware surplus matching**, **authorized emergency transfers**, and **public medicine availability searches**.
@@ -72,7 +71,7 @@ smart-phc-medicine-system/
 │   ├── 404.html             # Page not found error template
 │   └── 500.html             # Server error template
 └── tests/
-    └── test_app.py          # 21 comprehensive automated tests
+    └── test_app.py          # 30 comprehensive automated tests
 ```
 
 ---
@@ -111,7 +110,7 @@ python seed.py
 *Output: `[OK] Smart PHC database seeded successfully with 8 PHCs, 14 Medicines, Inventory, Transfers, and Audit Logs.`*
 
 ### Step 6: Run Automated Test Suite
-Verify that all 21 acceptance tests pass:
+Verify that all 30 acceptance tests pass:
 ```powershell
 pytest -v
 ```
@@ -127,15 +126,16 @@ http://127.0.0.1:3000   (or http://localhost:3000)
 
 ---
 
-## 5. Pre-Configured Demo Accounts (For Hackathon Demonstration)
+## 5. Pre-Configured Demo Accounts (For Live Demonstration)
 
-| Role | Username | Password | Scope & Assigned PHC |
+| Role | Username | Password | Scope & Capabilities |
 | :--- | :--- | :--- | :--- |
-| **District Admin** | `admin` | `Admin@123` | Full district oversight, approvals, and reports |
-| **Shortage PHC Staff** | `green_valley_staff` | `Staff@123` | Green Valley PHC (Amoxicillin shortage: 1.2 days left) |
-| **Surplus PHC Staff** | `sunrise_staff` | `Staff@123` | Sunrise Lake PHC (Holds 360 units safe surplus) |
+| **District Admin** | `admin` | `Admin@123` | Full district oversight, PHC approvals, replenishment request reviews, transfer approvals |
+| **Medical Pharmacist** | `green_valley_staff` | `Staff@123` | Green Valley PHC dispensary inventory, order fulfillment, replenishment requests |
+| **Medical Pharmacist** | `sunrise_staff` | `Staff@123` | Sunrise Lake PHC (Holds safe surplus), dispatch inter-PHC transfers |
+| **Patient** | `patient_jane` | `Patient@123` | Medicine search, delivery request submission, order tracking, order cancellation |
 
-*(Quick autofill buttons are built directly into the login screen for seamless live demonstrations).*
+*(Patients can also self-register via the Patient Register portal. Quick autofill options are provided on login views for seamless testing).*
 
 ---
 
@@ -206,6 +206,3 @@ git add .
 git commit -m "Complete Smart PHC medicine stock prediction and early warning system"
 git push origin main
 ```
-# smart-phc-medicine-system
-Smart PHC Medicine Stock Prediction and Early Warning System
- origin/main

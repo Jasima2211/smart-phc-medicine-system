@@ -1,212 +1,175 @@
 {% extends "base.html" %}
 
-{% block title %}PHC Staff Dashboard — {{ phc.name }} | Smart PHC{% endblock %}
+{% block title %}Dashboard — {{ phc.name }} | Smart PHC{% endblock %}
 
 {% block content %}
 <div class="page-header d-flex flex-wrap justify-content-between align-items-center gap-2">
   <div>
-    <h1><i class="bi bi-hospital text-teal me-2"></i>{{ phc.name }}</h1>
-    <p><i class="bi bi-geo-alt me-1"></i>{{ phc.location }} • Contact: {{ phc.contact_phone }}</p>
+    <h1>{{ phc.name }}</h1>
+    <p>{{ phc.location }} • Phone: {{ phc.contact_phone }}</p>
   </div>
   <div class="d-flex gap-2">
     <a href="{{ url_for('phc_inventory') }}" class="btn btn-phc-primary btn-sm">
-      <i class="bi bi-capsule me-1"></i> Manage Inventory
+      Manage Inventory
     </a>
-    <a href="{{ url_for('phc_transfers') }}" class="btn btn-phc-accent btn-sm">
-      <i class="bi bi-truck me-1"></i> Emergency Transfers
+    <a href="{{ url_for('phc_deliveries') }}" class="btn btn-outline-secondary btn-sm">
+      Patient Deliveries
+    </a>
+    <a href="{{ url_for('phc_replenishment') }}" class="btn btn-outline-secondary btn-sm">
+      Replenishment
     </a>
   </div>
 </div>
 
-<!-- Key Operational Metric Cards -->
+<!-- Operational Metric Cards -->
 <div class="row g-3 mb-4">
   <div class="col-sm-6 col-lg-3">
     <div class="stat-card">
-      <div class="stat-icon primary"><i class="bi bi-capsule-pill"></i></div>
+      <div class="stat-icon primary"><i class="bi bi-capsule"></i></div>
       <div class="stat-value">{{ metrics.total_medicines }}</div>
       <div class="stat-label">Tracked Medicines</div>
-      <div class="stat-subtext">Active dispensary inventory items</div>
     </div>
   </div>
 
   <div class="col-sm-6 col-lg-3">
     <div class="stat-card">
-      <div class="stat-icon danger"><i class="bi bi-exclamation-octagon-fill"></i></div>
+      <div class="stat-icon danger"><i class="bi bi-exclamation-circle"></i></div>
       <div class="stat-value text-danger">{{ metrics.critical_alerts }}</div>
       <div class="stat-label">Critical Depletions</div>
-      <div class="stat-subtext">Projected stock-out within lead time</div>
     </div>
   </div>
 
   <div class="col-sm-6 col-lg-3">
     <div class="stat-card">
-      <div class="stat-icon warning"><i class="bi bi-exclamation-triangle-fill"></i></div>
-      <div class="stat-value text-warning-emphasis">{{ metrics.high_risk }}</div>
-      <div class="stat-label">High / Warning Risk</div>
-      <div class="stat-subtext">Rapidly depleting stock buffer</div>
+      <div class="stat-icon warning"><i class="bi bi-box-seam"></i></div>
+      <div class="stat-value text-warning-emphasis">{{ metrics.pending_deliveries or 0 }}</div>
+      <div class="stat-label">Pending Deliveries</div>
     </div>
   </div>
 
   <div class="col-sm-6 col-lg-3">
     <div class="stat-card">
-      <div class="stat-icon teal"><i class="bi bi-arrow-left-right"></i></div>
-      <div class="stat-value text-teal">{{ metrics.pending_transfers }}</div>
-      <div class="stat-label">Pending Transfers</div>
-      <div class="stat-subtext">Awaiting admin review or dispatch</div>
+      <div class="stat-icon teal"><i class="bi bi-arrow-repeat"></i></div>
+      <div class="stat-value">{{ metrics.pending_replenishments or 0 }}</div>
+      <div class="stat-label">Pending Replenishments</div>
     </div>
   </div>
 </div>
 
-<!-- Main Operations Grid -->
-<div class="row g-4 mb-4">
-  <!-- Stock Risk Distribution Chart & Quick Actions -->
-  <div class="col-lg-4">
-    <div class="card card-phc h-100">
-      <div class="card-header">
-        <span><i class="bi bi-pie-chart-fill me-2 text-primary"></i>Stock Risk Portfolio</span>
-      </div>
-      <div class="card-body d-flex flex-column align-items-center justify-content-center">
-        <div style="height: 220px; width: 100%;">
-          <canvas id="stockRiskChart"></canvas>
-        </div>
-        <div class="d-flex justify-content-center gap-3 mt-3 small text-muted">
-          <span><strong class="text-danger">●</strong> Critical: {{ metrics.critical_alerts }}</span>
-          <span><strong class="text-warning">●</strong> High: {{ metrics.high_risk }}</span>
-          <span><strong class="text-info">●</strong> Medium: {{ metrics.medium_risk }}</span>
-          <span><strong class="text-success">●</strong> Safe: {{ metrics.safe_count }}</span>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Priority Early Warnings & Shortage Callouts -->
-  <div class="col-lg-8">
-    <div class="card card-phc h-100">
-      <div class="card-header d-flex justify-content-between align-items-center">
-        <span><i class="bi bi-bell-fill me-2 text-danger"></i>Priority Shortage Warnings & Depletion Velocity</span>
-        <a href="{{ url_for('phc_alerts') }}" class="btn btn-sm btn-outline-secondary">View All Alerts</a>
-      </div>
-      <div class="card-body p-0">
-        {% if critical_items %}
-          <div class="table-responsive">
-            <table class="table table-phc">
-              <thead>
-                <tr>
-                  <th>Medicine</th>
-                  <th>Usable Stock</th>
-                  <th>Daily Usage</th>
-                  <th>Days Remaining</th>
-                  <th>Est. Stock-out</th>
-                  <th>Risk Level</th>
-                  <th class="text-end">Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for item in critical_items %}
-                  <tr>
-                    <td>
-                      <div class="fw-bold text-dark">{{ item.medicine_name }}</div>
-                      <small class="text-muted">{{ item.dosage_form or item.unit }}</small>
-                    </td>
-                    <td><span class="badge bg-light text-dark border fs-6">{{ item.usable_quantity }}</span></td>
-                    <td>{{ item.avg_daily_consumption }} /day</td>
-                    <td>
-                      <strong class="text-danger">{{ item.prediction.days_remaining_display }}</strong>
-                    </td>
-                    <td>
-                      <small class="text-danger fw-semibold">{{ item.prediction.predicted_stockout_display }}</small>
-                    </td>
-                    <td>
-                      <span class="badge-risk {{ item.prediction.risk_level|lower }}">
-                        {{ item.prediction.risk_level }}
-                      </span>
-                    </td>
-                    <td class="text-end">
-                      <a href="{{ url_for('transfer_recommendations', medicine_id=item.medicine_id) }}" class="btn btn-sm btn-phc-accent" title="Find nearby surplus health centres">
-                        <i class="bi bi-search me-1"></i> Surplus Matches
-                      </a>
-                    </td>
-                  </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        {% else %}
-          <div class="p-4 text-center text-muted">
-            <i class="bi bi-shield-check text-success fs-1 mb-2"></i>
-            <h6 class="fw-bold text-dark">No Critical Stock Depletions</h6>
-            <p class="small text-muted mb-0">All tracked medicines currently maintain safe reserves beyond replenishment lead times.</p>
-          </div>
-        {% endif %}
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Recent Stock Ledger Transactions -->
-<div class="card card-phc">
+<!-- Early Warnings & Critical Items -->
+<div class="card card-phc mb-4">
   <div class="card-header d-flex justify-content-between align-items-center">
-    <span><i class="bi bi-journal-text me-2 text-primary"></i>Recent Stock Movements & Transactions</span>
-    <a href="{{ url_for('phc_inventory') }}" class="btn btn-sm btn-outline-primary">Open Inventory Manager</a>
+    <span>Critical & Low Stock Medicines</span>
+    <a href="{{ url_for('phc_alerts') }}" class="btn btn-sm btn-outline-secondary">View All Alerts</a>
   </div>
   <div class="card-body p-0">
-    <div class="table-responsive">
-      <table class="table table-phc">
-        <thead>
-          <tr>
-            <th>Timestamp</th>
-            <th>Medicine</th>
-            <th>Type</th>
-            <th>Quantity</th>
-            <th>Inventory Before → After</th>
-            <th>Recorded By</th>
-            <th>Notes</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for tx in recent_transactions %}
+    {% if critical_items %}
+      <div class="table-responsive">
+        <table class="table table-phc">
+          <thead>
             <tr>
-              <td><small class="text-muted">{{ tx.created_at|format_dt }}</small></td>
-              <td class="fw-semibold">{{ tx.medicine_name }}</td>
-              <td>
-                {% if tx.transaction_type == 'received' %}
-                  <span class="badge bg-success-subtle text-success"><i class="bi bi-arrow-down-left"></i> Received</span>
-                {% elif tx.transaction_type == 'issued' %}
-                  <span class="badge bg-danger-subtle text-danger"><i class="bi bi-arrow-up-right"></i> Issued</span>
-                {% elif tx.transaction_type == 'transfer_dispatch' %}
-                  <span class="badge bg-warning-subtle text-warning-emphasis"><i class="bi bi-truck"></i> Dispatched</span>
-                {% elif tx.transaction_type == 'transfer_receipt' %}
-                  <span class="badge bg-teal-subtle text-teal"><i class="bi bi-box2-check"></i> Transfer In</span>
-                {% else %}
-                  <span class="badge bg-secondary-subtle text-secondary"><i class="bi bi-pencil-square"></i> Adjustment</span>
-                {% endif %}
-              </td>
-              <td><strong>{{ tx.quantity }}</strong> units</td>
-              <td><small class="text-muted">{{ tx.previous_quantity }} → <strong class="text-dark">{{ tx.new_quantity }}</strong></small></td>
-              <td><small>{{ tx.username or 'System' }}</small></td>
-              <td><small class="text-muted">{{ tx.notes or '—' }}</small></td>
+              <th>Medicine</th>
+              <th>Usable Stock</th>
+              <th>Safety Stock</th>
+              <th>Daily Consumption</th>
+              <th>Days Remaining</th>
+              <th>Est. Stock-out</th>
+              <th>Risk Level</th>
+              <th class="text-end">Action</th>
             </tr>
-          {% else %}
-            <tr>
-              <td colspan="7" class="text-center py-3 text-muted">No transactions recorded yet.</td>
-            </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {% for item in critical_items %}
+              <tr>
+                <td>
+                  <div class="fw-bold text-dark">{{ item.medicine_name }}</div>
+                  <small class="text-muted">{{ item.dosage_form or item.unit }}</small>
+                </td>
+                <td><strong>{{ item.usable_quantity }}</strong> {{ item.unit }}</td>
+                <td>{{ item.safety_stock }}</td>
+                <td>{{ item.avg_daily_consumption }} /day</td>
+                <td>
+                  <strong class="{% if item.prediction.risk_level == 'Critical' %}text-danger{% else %}text-warning-emphasis{% endif %}">
+                    {{ item.prediction.days_remaining_display }}
+                  </strong>
+                </td>
+                <td><small>{{ item.prediction.predicted_stockout_display }}</small></td>
+                <td>
+                  <span class="badge-risk {{ item.prediction.risk_level|lower }}">
+                    {{ item.prediction.risk_level }}
+                  </span>
+                </td>
+                <td class="text-end">
+                  <a href="{{ url_for('transfer_recommendations', medicine_id=item.medicine_id) }}" class="btn btn-sm btn-phc-primary">
+                    Find Surplus
+                  </a>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="p-4 text-center text-muted">
+        <p class="mb-0">All medicines currently maintain safe inventory levels.</p>
+      </div>
+    {% endif %}
   </div>
 </div>
-{% endblock %}
 
-{% block scripts %}
-<script>
-  document.addEventListener("DOMContentLoaded", function () {
-    renderPhcStockChart(
-      "stockRiskChart",
-      ["Critical", "High", "Medium", "Safe"],
-      [{{ metrics.critical_alerts }}, {{ metrics.high_risk }}, {{ metrics.medium_risk }}, {{ metrics.safe_count }}],
-      ["#dc2626", "#d97706", "#0284c7", "#16a34a"]
-    );
-  });
-</script>
+<!-- Recent Stock Movements -->
+<div class="card card-phc">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span>Recent Stock Movements</span>
+    <a href="{{ url_for('phc_inventory') }}" class="btn btn-sm btn-outline-secondary">Inventory Manager</a>
+  </div>
+  <div class="card-body p-0">
+    {% if recent_transactions %}
+      <div class="table-responsive">
+        <table class="table table-phc">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Medicine</th>
+              <th>Type</th>
+              <th>Change Qty</th>
+              <th>Balance</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for tx in recent_transactions %}
+              <tr>
+                <td><small class="text-muted">{{ tx.created_at|format_dt }}</small></td>
+                <td><strong>{{ tx.medicine_name }}</strong></td>
+                <td>
+                  {% if tx.transaction_type == 'received' %}
+                    <span class="badge bg-success-subtle text-success border border-success-subtle">Received</span>
+                  {% elif tx.transaction_type == 'issued' %}
+                    <span class="badge bg-danger-subtle text-danger border border-danger-subtle">Dispensed</span>
+                  {% elif tx.transaction_type == 'transfer_receipt' %}
+                    <span class="badge bg-primary-subtle text-primary border border-primary-subtle">Transfer In</span>
+                  {% elif tx.transaction_type == 'transfer_dispatch' %}
+                    <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle">Transfer Out</span>
+                  {% else %}
+                    <span class="badge bg-secondary-subtle text-secondary border">Adjustment</span>
+                  {% endif %}
+                </td>
+                <td>
+                  {% if tx.transaction_type in ['received', 'transfer_receipt'] %}+{% else %}-{% endif %}{{ tx.quantity }}
+                </td>
+                <td><strong>{{ tx.new_quantity }}</strong></td>
+                <td><small class="text-muted">{{ tx.notes or '—' }}</small></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="p-4 text-center text-muted">
+        <p class="mb-0">No recorded stock movements yet.</p>
+      </div>
+    {% endif %}
+  </div>
+</div>
 {% endblock %}

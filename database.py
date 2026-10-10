@@ -65,6 +65,20 @@ def init_db(custom_path=None):
         with open(schema_path, "r", encoding="utf-8") as f:
             conn.executescript(f.read())
         conn.commit()
+
+        # Safe migrations for pre-existing database tables
+        migration_statements = [
+            "ALTER TABLE users ADD COLUMN full_name TEXT;",
+            "ALTER TABLE users ADD COLUMN contact_phone TEXT;",
+            "ALTER TABLE users ADD COLUMN delivery_address TEXT;",
+            "ALTER TABLE delivery_requests ADD COLUMN user_id INTEGER REFERENCES users(id) ON DELETE SET NULL;",
+        ]
+        for stmt in migration_statements:
+            try:
+                conn.execute(stmt)
+                conn.commit()
+            except sqlite3.OperationalError:
+                pass
     finally:
         if is_standalone:
             conn.close()

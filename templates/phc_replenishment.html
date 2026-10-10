@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+
+{% block title %}Stock Replenishment Requests — {{ phc.name }} | Smart PHC{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex flex-wrap justify-content-between align-items-center gap-3">
+  <div>
+    <h1>Stock Replenishment Requests</h1>
+    <p>Submit and track central medicine replenishment requests for <strong>{{ phc.name }}</strong>.</p>
+  </div>
+  <div>
+    <a href="{{ url_for('phc_inventory') }}" class="btn btn-phc-primary btn-sm">
+      Inventory
+    </a>
+  </div>
+</div>
+
+<div class="row g-4">
+  <!-- Submission Form -->
+  <div class="col-lg-4">
+    <div class="card card-phc shadow-sm">
+      <div class="card-header">
+        <span>New Replenishment Request</span>
+      </div>
+      <div class="card-body">
+        <form action="{{ url_for('phc_replenishment_submit') }}" method="POST">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+          <div class="mb-3">
+            <label for="medicine_id" class="form-label small fw-semibold">Medicine</label>
+            <select class="form-select" id="medicine_id" name="medicine_id" required>
+              <option value="">Select Medicine...</option>
+              {% for m in all_medicines %}
+                <option value="{{ m.id }}">{{ m.name }} ({{ m.dosage_form or m.unit }})</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          <div class="mb-3">
+            <label for="requested_quantity" class="form-label small fw-semibold">Requested Quantity</label>
+            <input type="number" class="form-control" id="requested_quantity" name="requested_quantity" min="1" max="10000" placeholder="Quantity needed" required>
+          </div>
+
+          <div class="mb-3">
+            <label for="reason" class="form-label small fw-semibold">Clinical Need / Justification</label>
+            <textarea class="form-control" id="reason" name="reason" rows="3" placeholder="Reason for replenishment request..." required></textarea>
+          </div>
+
+          <button type="submit" class="btn btn-phc-primary w-100 fw-semibold">
+            Submit Request to District Admin
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Requests Table -->
+  <div class="col-lg-8">
+    <div class="card card-phc shadow-sm">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Submitted Requests ({{ requests|length }})</span>
+      </div>
+      <div class="card-body p-0">
+        {% if requests %}
+          <div class="table-responsive">
+            <table class="table table-phc">
+              <thead>
+                <tr>
+                  <th>Request ID</th>
+                  <th>Medicine</th>
+                  <th>Quantity</th>
+                  <th>Request Date</th>
+                  <th>Reason</th>
+                  <th>Status</th>
+                  <th>Admin Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for r in requests %}
+                  <tr>
+                    <td><code>#REQ-{{ r.id }}</code></td>
+                    <td><strong>{{ r.medicine_name }}</strong></td>
+                    <td><strong>{{ r.requested_quantity }}</strong> units</td>
+                    <td><small class="text-muted">{{ r.created_at|format_dt }}</small></td>
+                    <td><small class="text-muted">{{ r.reason }}</small></td>
+                    <td>
+                      {% if r.status == 'approved' %}
+                        <span class="badge-risk safe">Approved</span>
+                      {% elif r.status == 'rejected' %}
+                        <span class="badge-risk critical">Rejected</span>
+                      {% else %}
+                        <span class="badge-risk high">Pending</span>
+                      {% endif %}
+                    </td>
+                    <td><small class="text-muted">{{ r.admin_notes or '—' }}</small></td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% else %}
+          <div class="p-4 text-center text-muted">
+            <p class="mb-0">No replenishment requests submitted yet.</p>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

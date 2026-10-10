@@ -95,7 +95,7 @@ def create_app(config_name=None):
         def decorated_function(*args, **kwargs):
             if "user_id" not in session:
                 flash("Administrator sign-in required.", "warning")
-                return redirect(url_for("login"))
+                return redirect(url_for("admin_login"))
             if session.get("role") != "admin":
                 flash("Access denied: Administrative privileges required.", "danger")
                 return abort(403)
@@ -106,39 +106,281 @@ def create_app(config_name=None):
         @wraps(f)
         def decorated_function(*args, **kwargs):
             if "user_id" not in session:
-                flash("PHC staff sign-in required.", "warning")
-                return redirect(url_for("login"))
+                flash("Medical Pharmacist sign-in required.", "warning")
+                return redirect(url_for("pharmacist_login"))
             if session.get("role") != "phc_staff":
-                flash("Access denied: PHC staff privileges required.", "danger")
+                flash("Access denied: Pharmacist privileges required.", "danger")
                 return abort(403)
-            if not session.get("phc_id"):
+            phc_id = session.get("phc_id")
+            if not phc_id:
                 flash("Account not linked to an authorized Primary Health Centre.", "danger")
+                return abort(403)
+            # Verify PHC is approved and active in database
+            db = get_db()
+            phc = db.execute("SELECT approval_status, active_status FROM phcs WHERE id = ?", (phc_id,)).fetchone()
+            if not phc or phc["approval_status"] != "approved" or phc["active_status"] != 1:
+                flash("Primary Health Centre is not approved or inactive.", "danger")
+                return abort(403)
+            return f(*args, **kwargs)
+        return decorated_function
+
+    def patient_required(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            if "user_id" not in session:
+                flash("Patient sign-in required.", "warning")
+                return redirect(url_for("patient_login", next=request.url))
+            if session.get("role") != "patient":
+                flash("Access denied: Patient account required.", "danger")
                 return abort(403)
             return f(*args, **kwargs)
         return decorated_function
 
     # ---------------------------------------------------------
-    # View A: Patient / Public Portal Routes
+    # Landing & Public Routes
     # ---------------------------------------------------------
     @app.route("/")
     def landing():
-        """Public landing page highlighting system mission and live network overview."""
+        """Public minimal landing page containing only Smart PHC and the three login options."""
+        return render_template("landing.html", active_page="landing")
+
+    # ---------------------------------------------------------
+    # Authentication & Registration Routes
+    # ---------------------------------------------------------
+    @app.route("/login/patient")
+    @app.route("/patient/login")
+    def patient_login():
+        """Dedicated Patient Login portal."""
+        if "user_id" in session and session.get("role") == "patient":
+            return redirect(url_for("patient_search"))
+        return render_template("login.html", role="patient", active_page="login")
+
+    @app.route("/login/admin")
+    @app.route("/admin/login")
+    def admin_login():
+        """Dedicated District Administrator Login portal."""
+        if "user_id" in session and session.get("role") == "admin":
+            return redirect(url_for("admin_dashboard"))
+        return render_template("login.html", role="admin", active_page="login")
+
+    @app.route("/login/pharmacist")
+    @app.route("/pharmacist/login")
+    def pharmacist_login():
+        """Dedicated Medical Pharmacist Login portal."""
+        if "user_id" in session and session.get("role") == "phc_staff":
+            return redirect(url_for("phc_dashboard"))
+        return render_template("login.html", role="phc_staff", active_page="login")
+
+    @app.route("/login", methods=["GET", "POST"])
+    def login():
+        """User sign in for administrators, pharmacists, and patients."""
+        if request.method == "GET":
+            if "user_id" in session:
+                role = session.get("role")
+                if role == "admin":
+                    return redirect(url_for("admin_dashboard"))
+                elif role == "phc_staff":
+                    return redirect(url_for("phc_dashboard"))
+                elif role == "patient":
+                    return redirect(url_for("patient_search"))
+            role_hint = request.args.get("role", "")
+            return render_template("login.html", role=role_hint, active_page="login")
+
+        # POST
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+
         db = get_db()
-        phcs_count = db.execute("SELECT COUNT(*) FROM phcs WHERE approval_status = 'approved'").fetchone()[0]
-        medicines_count = db.execute("SELECT COUNT(*) FROM medicines WHERE active_status = 1").fetchone()[0]
-        alerts_count = db.execute("SELECT COUNT(*) FROM alerts WHERE status = 'open'").fetchone()[0]
+        user = db.execute("SELECT * FROM users WHERE username = ? AND active_status = 1", (username,)).fetchone()
 
-        return render_template(
-            "landing.html",
-            phcs_count=phcs_count,
-            medicines_count=medicines_count,
-            alerts_count=alerts_count,
-            active_page="landing"
-        )
+        if user and check_password_hash(user["password_hash"], password):
+            # Check PHC approval if staff
+            if user["role"] == "phc_staff":
+                if not user["phc_id"]:
+                    flash("Pharmacist account is not linked to any Primary Health Centre.", "danger")
+                    return redirect(url_for("pharmacist_login"))
+                phc = db.execute("SELECT * FROM phcs WHERE id = ?", (user["phc_id"],)).fetchone()
+                if not phc:
+                    flash("Associated Primary Health Centre not found.", "danger")
+                    return redirect(url_for("pharmacist_login"))
+                if phc["approval_status"] == "pending":
+                    flash("Your Primary Health Centre registration is pending approval by the District Administrator.", "warning")
+                    return redirect(url_for("pharmacist_login"))
+                if phc["approval_status"] == "rejected":
+                    flash("Your Primary Health Centre registration has been rejected by the District Administrator.", "danger")
+                    return redirect(url_for("pharmacist_login"))
+                if phc["approval_status"] == "suspended" or phc["active_status"] == 0:
+                    flash("Your Primary Health Centre has been suspended.", "danger")
+                    return redirect(url_for("pharmacist_login"))
 
+            session.clear()
+            session["user_id"] = user["id"]
+            session["username"] = user["username"]
+            session["role"] = user["role"]
+            session["phc_id"] = user["phc_id"]
+
+            user_dict = dict(user)
+            if user_dict.get("full_name"):
+                session["full_name"] = user_dict["full_name"]
+            if user_dict.get("contact_phone"):
+                session["contact_phone"] = user_dict["contact_phone"]
+            if user_dict.get("delivery_address"):
+                session["delivery_address"] = user_dict["delivery_address"]
+
+            if user["phc_id"]:
+                phc = db.execute("SELECT name FROM phcs WHERE id = ?", (user["phc_id"],)).fetchone()
+                session["phc_name"] = phc["name"] if phc else "Assigned PHC"
+
+            # Update last login timestamp
+            db.execute("UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?", (user["id"],))
+            db.commit()
+
+            log_audit("USER_LOGIN", "users", user["id"], f"Successful authentication for {username}")
+            flash(f"Welcome back, {user['username']}!", "success")
+
+            next_url = request.args.get("next")
+            if next_url and next_url.startswith("/"):
+                return redirect(next_url)
+
+            if user["role"] == "admin":
+                return redirect(url_for("admin_dashboard"))
+            elif user["role"] == "phc_staff":
+                return redirect(url_for("phc_dashboard"))
+            else:
+                return redirect(url_for("patient_search"))
+        else:
+            flash("Invalid username or password credentials.", "danger")
+
+        return render_template("login.html", active_page="login")
+
+    @app.route("/patient/register", methods=["GET", "POST"])
+    def patient_register():
+        """Patient registration portal."""
+        if request.method == "POST":
+            full_name = request.form.get("full_name", "").strip()
+            contact_phone = request.form.get("contact_phone", "").strip()
+            delivery_address = request.form.get("delivery_address", "").strip()
+            username = request.form.get("username", "").strip()
+            password = request.form.get("password", "")
+            confirm_password = request.form.get("confirm_password", "")
+
+            if not (full_name and contact_phone and delivery_address and username and password):
+                flash("Please fill in all required registration fields.", "danger")
+                return render_template("patient_register.html", active_page="patient_register")
+
+            if password != confirm_password:
+                flash("Passwords do not match.", "danger")
+                return render_template("patient_register.html", active_page="patient_register")
+
+            if len(password) < 6:
+                flash("Password must be at least 6 characters.", "danger")
+                return render_template("patient_register.html", active_page="patient_register")
+
+            db = get_db()
+            existing = db.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
+            if existing:
+                flash("Username is already taken. Please select another.", "danger")
+                return render_template("patient_register.html", active_page="patient_register")
+
+            pw_hash = generate_password_hash(password)
+            cur = db.execute(
+                """
+                INSERT INTO users (username, password_hash, role, phc_id, full_name, contact_phone, delivery_address, active_status)
+                VALUES (?, ?, 'patient', NULL, ?, ?, ?, 1)
+                """,
+                (username, pw_hash, full_name, contact_phone, delivery_address)
+            )
+            user_id = cur.lastrowid
+            db.commit()
+
+            # Auto-login after successful registration
+            session.clear()
+            session["user_id"] = user_id
+            session["username"] = username
+            session["role"] = "patient"
+            session["full_name"] = full_name
+            session["contact_phone"] = contact_phone
+            session["delivery_address"] = delivery_address
+
+            log_audit("PATIENT_REGISTERED", "users", user_id, f"Patient {username} registered successfully.")
+            flash(f"Welcome, {full_name}! Your patient account has been created.", "success")
+            return redirect(url_for("patient_search"))
+
+        return render_template("patient_register.html", active_page="patient_register")
+
+    @app.route("/provider/register", methods=["GET", "POST"])
+    def provider_register():
+        """Primary Health Centre and Pharmacist provider registration."""
+        if request.method == "POST":
+            name = request.form.get("name", "").strip()
+            location = request.form.get("location", "").strip()
+            contact_phone = request.form.get("contact_phone", "").strip()
+            username = request.form.get("username", "").strip()
+            password = request.form.get("password", "")
+            confirm_password = request.form.get("confirm_password", "")
+
+            if not (name and location and contact_phone and username and password):
+                flash("Please fill in all required registration fields.", "danger")
+                return render_template("provider_register.html", active_page="provider_register")
+
+            if password != confirm_password:
+                flash("Passwords do not match.", "danger")
+                return render_template("provider_register.html", active_page="provider_register")
+
+            db = get_db()
+            existing_phc = db.execute("SELECT id FROM phcs WHERE name = ?", (name,)).fetchone()
+            if existing_phc:
+                flash("A Primary Health Centre with this name is already registered.", "danger")
+                return render_template("provider_register.html", active_page="provider_register")
+
+            existing_user = db.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
+            if existing_user:
+                flash("Pharmacist username is already taken.", "danger")
+                return render_template("provider_register.html", active_page="provider_register")
+
+            # Create PHC with pending status and inactive until approved
+            cur_phc = db.execute(
+                """
+                INSERT INTO phcs (name, location, contact_phone, approval_status, active_status)
+                VALUES (?, ?, ?, 'pending', 0)
+                """,
+                (name, location, contact_phone)
+            )
+            phc_id = cur_phc.lastrowid
+
+            pw_hash = generate_password_hash(password)
+            cur_user = db.execute(
+                """
+                INSERT INTO users (username, password_hash, role, phc_id, full_name, contact_phone, active_status)
+                VALUES (?, ?, 'phc_staff', ?, ?, ?, 1)
+                """,
+                (username, pw_hash, phc_id, f"Pharmacist {name}", contact_phone)
+            )
+            user_id = cur_user.lastrowid
+            db.commit()
+
+            log_audit("PROVIDER_REGISTERED", "phcs", phc_id, f"PHC {name} registered (pending approval). Staff: {username}")
+            flash("Registration submitted successfully. Your Primary Health Centre is pending approval by the District Administrator.", "info")
+            return redirect(url_for("pharmacist_login"))
+
+        return render_template("provider_register.html", active_page="provider_register")
+
+    @app.route("/logout")
+    def logout():
+        """Sign out active session."""
+        username = session.get("username")
+        if username:
+            log_audit("USER_LOGOUT", "users", session.get("user_id"), f"Sign-out for {username}")
+        session.clear()
+        flash("You have been signed out successfully.", "info")
+        return redirect(url_for("landing"))
+
+    # ---------------------------------------------------------
+    # View A: Patient Portal Routes
+    # ---------------------------------------------------------
     @app.route("/patient/search")
     def patient_search():
-        """Public medicine availability lookup without login."""
+        """Public medicine availability lookup with live database records."""
         q = request.args.get("q", "").strip()
         phc_id = request.args.get("phc_id", type=int)
 
@@ -194,7 +436,7 @@ def create_app(config_name=None):
 
     @app.route("/patient/delivery", methods=["GET", "POST"])
     def patient_delivery():
-        """Patient home delivery request submission."""
+        """Patient medicine delivery request submission with safe stock reservation."""
         db = get_db()
         if request.method == "POST":
             phc_id = request.form.get("phc_id", type=int)
@@ -207,22 +449,55 @@ def create_app(config_name=None):
 
             if not (phc_id and medicine_id and quantity and quantity > 0 and patient_name and contact_phone and delivery_address):
                 flash("Please fill in all required delivery fields.", "danger")
+                return redirect(url_for("patient_delivery", phc_id=phc_id, medicine_id=medicine_id))
+
+            # Verify PHC is approved and active
+            phc = db.execute("SELECT id, name FROM phcs WHERE id = ? AND approval_status = 'approved' AND active_status = 1", (phc_id,)).fetchone()
+            if not phc:
+                flash("The selected Primary Health Centre is not currently accepting delivery orders.", "danger")
                 return redirect(url_for("patient_delivery"))
+
+            # Atomic check and stock reservation
+            inv = db.execute("SELECT * FROM inventory WHERE phc_id = ? AND medicine_id = ?", (phc_id, medicine_id)).fetchone()
+            if not inv or inv["usable_quantity"] < quantity:
+                available = inv["usable_quantity"] if inv else 0
+                flash(f"Cannot place order for {quantity} units: only {available} units available in stock.", "danger")
+                return redirect(url_for("patient_delivery", phc_id=phc_id, medicine_id=medicine_id))
+
+            # Deduct reserved stock
+            prev_qty = inv["usable_quantity"]
+            new_qty = prev_qty - quantity
+            db.execute("UPDATE inventory SET usable_quantity = ?, last_updated = CURRENT_TIMESTAMP WHERE id = ?", (new_qty, inv["id"]))
 
             # Generate unique tracking reference code
             tracking_code = f"TRK-{secrets.token_hex(4).upper()}"
 
+            # Log stock reservation in ledger
+            user_id = session.get("user_id")
             db.execute(
                 """
-                INSERT INTO delivery_requests (tracking_code, phc_id, medicine_id, quantity, patient_name, contact_phone, delivery_address, status, notes)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 'Pending', ?)
+                INSERT INTO stock_transactions (phc_id, medicine_id, transaction_type, quantity, previous_quantity, new_quantity, user_id, notes)
+                VALUES (?, ?, 'issued', ?, ?, ?, ?, ?)
                 """,
-                (tracking_code, phc_id, medicine_id, quantity, patient_name, contact_phone, delivery_address, notes)
+                (phc_id, medicine_id, quantity, prev_qty, new_qty, user_id, f"Patient delivery order {tracking_code} (reserved)")
             )
+
+            # Insert delivery request
+            db.execute(
+                """
+                INSERT INTO delivery_requests (tracking_code, phc_id, medicine_id, quantity, patient_name, contact_phone, delivery_address, user_id, status, notes)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Pending', ?)
+                """,
+                (tracking_code, phc_id, medicine_id, quantity, patient_name, contact_phone, delivery_address, user_id, notes)
+            )
+
+            # Sync alerts with new stock level
+            pred = calculate_stock_prediction(new_qty, inv["safety_stock"], inv["avg_daily_consumption"], inv["replenishment_lead_time_days"])
+            sync_inventory_alerts(db, phc_id, medicine_id, pred)
+
             db.commit()
 
             log_audit("PATIENT_DELIVERY_REQUESTED", "delivery_requests", None, f"Tracking: {tracking_code}, Med #{medicine_id}, Qty: {quantity}")
-
             flash(f"Delivery request submitted successfully! Your tracking reference code is: {tracking_code}", "success")
             return redirect(url_for("patient_track", code=tracking_code))
 
@@ -239,12 +514,15 @@ def create_app(config_name=None):
             all_medicines=all_medicines,
             selected_phc_id=pre_phc,
             selected_med_id=pre_med,
+            default_patient_name=session.get("full_name", ""),
+            default_phone=session.get("contact_phone", ""),
+            default_address=session.get("delivery_address", ""),
             active_page="patient_delivery"
         )
 
     @app.route("/patient/track")
     def patient_track():
-        """Public status lookup by tracking reference code (protects personal phone/address)."""
+        """Public status lookup by tracking reference code (masks personal phone & address)."""
         code = request.args.get("code", "").strip().upper()
         delivery = None
         if code:
@@ -270,64 +548,70 @@ def create_app(config_name=None):
             active_page="patient_track"
         )
 
+    @app.route("/patient/orders")
+    @patient_required
+    def patient_orders():
+        """View delivery orders placed by the signed-in patient."""
+        user_id = session["user_id"]
+        db = get_db()
+        orders = db.execute(
+            """
+            SELECT 
+                d.*,
+                m.name AS medicine_name,
+                p.name AS phc_name
+            FROM delivery_requests d
+            JOIN medicines m ON m.id = d.medicine_id
+            JOIN phcs p ON p.id = d.phc_id
+            WHERE d.user_id = ?
+            ORDER BY d.created_at DESC
+            """,
+            (user_id,)
+        ).fetchall()
+
+        return render_template("patient_orders.html", orders=orders, active_page="patient_orders")
+
+    @app.route("/patient/orders/cancel/<int:order_id>", methods=["POST"])
+    @patient_required
+    def patient_order_cancel(order_id):
+        """Cancel a pending delivery order and release reserved stock back into inventory."""
+        user_id = session["user_id"]
+        db = get_db()
+
+        order = db.execute("SELECT * FROM delivery_requests WHERE id = ? AND user_id = ?", (order_id, user_id)).fetchone()
+        if not order:
+            flash("Order not found.", "danger")
+            return redirect(url_for("patient_orders"))
+
+        if order["status"] != "Pending":
+            flash("Only pending orders can be cancelled.", "warning")
+            return redirect(url_for("patient_orders"))
+
+        # Release stock back to PHC inventory
+        inv = db.execute("SELECT * FROM inventory WHERE phc_id = ? AND medicine_id = ?", (order["phc_id"], order["medicine_id"])).fetchone()
+        if inv:
+            prev_qty = inv["usable_quantity"]
+            new_qty = prev_qty + order["quantity"]
+            db.execute("UPDATE inventory SET usable_quantity = ?, last_updated = CURRENT_TIMESTAMP WHERE id = ?", (new_qty, inv["id"]))
+            db.execute(
+                """
+                INSERT INTO stock_transactions (phc_id, medicine_id, transaction_type, quantity, previous_quantity, new_quantity, user_id, notes)
+                VALUES (?, ?, 'received', ?, ?, ?, ?, ?)
+                """,
+                (order["phc_id"], order["medicine_id"], order["quantity"], prev_qty, new_qty, user_id, f"Order {order['tracking_code']} cancelled by patient (restocked)")
+            )
+            pred = calculate_stock_prediction(new_qty, inv["safety_stock"], inv["avg_daily_consumption"], inv["replenishment_lead_time_days"])
+            sync_inventory_alerts(db, order["phc_id"], order["medicine_id"], pred)
+
+        db.execute("UPDATE delivery_requests SET status = 'Cancelled', updated_at = CURRENT_TIMESTAMP WHERE id = ?", (order_id,))
+        db.commit()
+
+        log_audit("PATIENT_DELIVERY_CANCELLED", "delivery_requests", order_id, f"Order {order['tracking_code']} cancelled by patient.")
+        flash(f"Order #{order['tracking_code']} has been cancelled.", "info")
+        return redirect(url_for("patient_orders"))
+
     # ---------------------------------------------------------
-    # Authentication & Session Management
-    # ---------------------------------------------------------
-    @app.route("/login", methods=["GET", "POST"])
-    def login():
-        """User sign in for administrators and PHC staff."""
-        if request.method == "GET" and "user_id" in session:
-            if session.get("role") == "admin":
-                return redirect(url_for("admin_dashboard"))
-            return redirect(url_for("phc_dashboard"))
-
-        if request.method == "POST":
-            username = request.form.get("username", "").strip()
-            password = request.form.get("password", "")
-
-            db = get_db()
-            user = db.execute("SELECT * FROM users WHERE username = ? AND active_status = 1", (username,)).fetchone()
-
-            if user and check_password_hash(user["password_hash"], password):
-                session.clear()
-                session["user_id"] = user["id"]
-                session["username"] = user["username"]
-                session["role"] = user["role"]
-                session["phc_id"] = user["phc_id"]
-
-                # Fetch associated PHC name if staff
-                if user["phc_id"]:
-                    phc = db.execute("SELECT name FROM phcs WHERE id = ?", (user["phc_id"],)).fetchone()
-                    session["phc_name"] = phc["name"] if phc else "Assigned PHC"
-
-                # Update last login timestamp
-                db.execute("UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?", (user["id"],))
-                db.commit()
-
-                log_audit("USER_LOGIN", "users", user["id"], f"Successful authentication for {username}")
-                flash(f"Welcome back, {user['username']}!", "success")
-
-                if user["role"] == "admin":
-                    return redirect(url_for("admin_dashboard"))
-                else:
-                    return redirect(url_for("phc_dashboard"))
-            else:
-                flash("Invalid username or password credentials.", "danger")
-
-        return render_template("login.html", active_page="login")
-
-    @app.route("/logout")
-    def logout():
-        """Sign out active session."""
-        username = session.get("username")
-        if username:
-            log_audit("USER_LOGOUT", "users", session.get("user_id"), f"Sign-out for {username}")
-        session.clear()
-        flash("You have been signed out successfully.", "info")
-        return redirect(url_for("login"))
-
-    # ---------------------------------------------------------
-    # View B: PHC Staff Portal Routes
+    # View B: Medical Pharmacist Portal Routes
     # ---------------------------------------------------------
     @app.route("/phc/dashboard")
     @phc_staff_required
@@ -392,6 +676,18 @@ def create_app(config_name=None):
             (phc_id, phc_id)
         ).fetchone()[0]
 
+        # Pending deliveries
+        pending_deliveries = db.execute(
+            "SELECT COUNT(*) FROM delivery_requests WHERE phc_id = ? AND status = 'Pending'",
+            (phc_id,)
+        ).fetchone()[0]
+
+        # Pending replenishment requests
+        pending_replenishments = db.execute(
+            "SELECT COUNT(*) FROM provider_stock_requests WHERE phc_id = ? AND status = 'pending'",
+            (phc_id,)
+        ).fetchone()[0]
+
         # Recent transactions
         recent_transactions = db.execute(
             """
@@ -413,6 +709,8 @@ def create_app(config_name=None):
             "medium_risk": medium_count,
             "safe_count": safe_count,
             "pending_transfers": pending_transfers,
+            "pending_deliveries": pending_deliveries,
+            "pending_replenishments": pending_replenishments,
         }
 
         return render_template(
@@ -427,7 +725,7 @@ def create_app(config_name=None):
     @app.route("/phc/inventory")
     @phc_staff_required
     def phc_inventory():
-        """Full inventory management table with predictions and action forms."""
+        """Full inventory management table with predictions and actions."""
         phc_id = session["phc_id"]
         selected_risk = request.args.get("risk", "").strip()
 
@@ -463,13 +761,122 @@ def create_app(config_name=None):
             else:
                 inventory_items.append(item_dict)
 
+        # Get catalogue medicines not already in this PHC's inventory
+        tracked_ids = [r["medicine_id"] for r in rows]
+        if tracked_ids:
+            placeholders = ",".join(["?"] * len(tracked_ids))
+            all_catalogue_medicines = db.execute(
+                f"SELECT id, name, dosage_form, unit FROM medicines WHERE active_status = 1 AND id NOT IN ({placeholders}) ORDER BY name",
+                tracked_ids
+            ).fetchall()
+        else:
+            all_catalogue_medicines = db.execute(
+                "SELECT id, name, dosage_form, unit FROM medicines WHERE active_status = 1 ORDER BY name"
+            ).fetchall()
+
         return render_template(
             "inventory.html",
             phc=phc,
             inventory_items=inventory_items,
+            all_catalogue_medicines=all_catalogue_medicines,
             selected_risk=selected_risk,
             active_page="inventory"
         )
+
+    @app.route("/phc/inventory/add", methods=["POST"])
+    @phc_staff_required
+    def phc_inventory_add():
+        """Add a medicine from the central catalogue into this PHC's dispensary inventory."""
+        phc_id = session["phc_id"]
+        medicine_id = request.form.get("medicine_id", type=int)
+        usable_quantity = request.form.get("usable_quantity", type=int, default=0)
+        safety_stock = request.form.get("safety_stock", type=int, default=50)
+        avg_daily_consumption = request.form.get("avg_daily_consumption", type=float, default=5.0)
+        replenishment_lead_time_days = request.form.get("replenishment_lead_time_days", type=int, default=7)
+
+        if not medicine_id or usable_quantity < 0 or safety_stock < 0 or avg_daily_consumption < 0 or replenishment_lead_time_days < 1:
+            flash("Please provide valid non-negative values to add medicine.", "danger")
+            return redirect(url_for("phc_inventory"))
+
+        db = get_db()
+        existing = db.execute("SELECT id FROM inventory WHERE phc_id = ? AND medicine_id = ?", (phc_id, medicine_id)).fetchone()
+        if existing:
+            flash("This medicine is already tracked in your inventory.", "warning")
+            return redirect(url_for("phc_inventory"))
+
+        cur = db.execute(
+            """
+            INSERT INTO inventory (phc_id, medicine_id, usable_quantity, safety_stock, avg_daily_consumption, replenishment_lead_time_days)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (phc_id, medicine_id, usable_quantity, safety_stock, avg_daily_consumption, replenishment_lead_time_days)
+        )
+        inv_id = cur.lastrowid
+
+        if usable_quantity > 0:
+            db.execute(
+                """
+                INSERT INTO stock_transactions (phc_id, medicine_id, transaction_type, quantity, previous_quantity, new_quantity, user_id, notes)
+                VALUES (?, ?, 'received', ?, 0, ?, ?, 'Initial inventory addition')
+                """,
+                (phc_id, medicine_id, usable_quantity, usable_quantity, session["user_id"])
+            )
+
+        pred = calculate_stock_prediction(usable_quantity, safety_stock, avg_daily_consumption, replenishment_lead_time_days)
+        sync_inventory_alerts(db, phc_id, medicine_id, pred)
+        db.commit()
+
+        log_audit("INVENTORY_ADDED", "inventory", inv_id, f"Added med #{medicine_id} with initial stock {usable_quantity}")
+        flash("Medicine successfully added to dispensary inventory.", "success")
+        return redirect(url_for("phc_inventory"))
+
+    @app.route("/phc/inventory/update-levels/<int:inventory_id>", methods=["POST"])
+    @phc_staff_required
+    def phc_inventory_update_levels(inventory_id):
+        """Update usable quantity, safety stock threshold, consumption velocity, and lead time."""
+        phc_id = session["phc_id"]
+        usable_quantity = request.form.get("usable_quantity", type=int)
+        safety_stock = request.form.get("safety_stock", type=int)
+        avg_daily_consumption = request.form.get("avg_daily_consumption", type=float)
+        lead_time = request.form.get("replenishment_lead_time_days", type=int)
+
+        if usable_quantity is None or usable_quantity < 0 or safety_stock is None or safety_stock < 0 or avg_daily_consumption is None or avg_daily_consumption < 0 or lead_time is None or lead_time < 1:
+            flash("Invalid input values. Quantities and thresholds must be non-negative.", "danger")
+            return redirect(url_for("phc_inventory"))
+
+        db = get_db()
+        inv = db.execute("SELECT * FROM inventory WHERE id = ? AND phc_id = ?", (inventory_id, phc_id)).fetchone()
+        if not inv:
+            flash("Inventory record not found.", "danger")
+            return redirect(url_for("phc_inventory"))
+
+        prev_qty = inv["usable_quantity"]
+        db.execute(
+            """
+            UPDATE inventory 
+            SET usable_quantity = ?, safety_stock = ?, avg_daily_consumption = ?, replenishment_lead_time_days = ?, last_updated = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (usable_quantity, safety_stock, avg_daily_consumption, lead_time, inventory_id)
+        )
+
+        if usable_quantity != prev_qty:
+            diff = usable_quantity - prev_qty
+            db.execute(
+                """
+                INSERT INTO stock_transactions (phc_id, medicine_id, transaction_type, quantity, previous_quantity, new_quantity, user_id, notes)
+                VALUES (?, ?, 'adjustment', ?, ?, ?, ?, 'Stock count update')
+                """,
+                (phc_id, inv["medicine_id"], abs(diff), prev_qty, usable_quantity, session["user_id"])
+            )
+
+        pred = calculate_stock_prediction(usable_quantity, safety_stock, avg_daily_consumption, lead_time)
+        sync_inventory_alerts(db, phc_id, inv["medicine_id"], pred)
+        db.commit()
+
+        log_audit("INVENTORY_UPDATED", "inventory", inventory_id, f"Stock updated to {usable_quantity}, safety stock to {safety_stock}")
+        flash("Dispensary stock and safety thresholds updated successfully.", "success")
+        return redirect(url_for("phc_inventory"))
 
     @app.route("/phc/stock/receive", methods=["POST"])
     @phc_staff_required
@@ -485,7 +892,6 @@ def create_app(config_name=None):
             return redirect(url_for("phc_inventory"))
 
         db = get_db()
-        # Atomic SQLite Transaction
         inv = db.execute(
             "SELECT * FROM inventory WHERE phc_id = ? AND medicine_id = ?",
             (phc_id, medicine_id)
@@ -511,7 +917,6 @@ def create_app(config_name=None):
             (phc_id, medicine_id, quantity, prev_qty, new_qty, session["user_id"], notes or "Inbound stock receipt")
         )
 
-        # Recalculate and synchronize alerts
         pred = calculate_stock_prediction(
             new_qty, inv["safety_stock"], inv["avg_daily_consumption"], inv["replenishment_lead_time_days"]
         )
@@ -519,7 +924,7 @@ def create_app(config_name=None):
 
         db.commit()
 
-        log_audit("STOCK_RECEIVE", "inventory", inv["id"], f"Received {quantity} units. Inventory changed from {prev_qty} to {new_qty}.")
+        log_audit("STOCK_RECEIVE", "inventory", inv["id"], f"Received {quantity} units. Stock: {prev_qty} -> {new_qty}.")
         flash(f"Successfully received {quantity} units into usable stock. Current balance: {new_qty} units.", "success")
         return redirect(url_for("phc_inventory"))
 
@@ -566,7 +971,6 @@ def create_app(config_name=None):
             (phc_id, medicine_id, quantity, prev_qty, new_qty, session["user_id"], notes or "Outpatient clinic dispensing")
         )
 
-        # Recalculate and synchronize alerts
         pred = calculate_stock_prediction(
             new_qty, inv["safety_stock"], inv["avg_daily_consumption"], inv["replenishment_lead_time_days"]
         )
@@ -574,14 +978,14 @@ def create_app(config_name=None):
 
         db.commit()
 
-        log_audit("STOCK_ISSUE", "inventory", inv["id"], f"Issued {quantity} units. Inventory changed from {prev_qty} to {new_qty}.")
+        log_audit("STOCK_ISSUE", "inventory", inv["id"], f"Issued {quantity} units. Stock: {prev_qty} -> {new_qty}.")
         flash(f"Dispensed {quantity} units. Remaining usable balance: {new_qty} units.", "success")
         return redirect(url_for("phc_inventory"))
 
     @app.route("/phc/stock/adjust", methods=["POST"])
     @phc_staff_required
     def phc_stock_adjust():
-        """Correct inventory count through authorized physical audit."""
+        """Correct inventory count through physical audit."""
         phc_id = session["phc_id"]
         medicine_id = request.form.get("medicine_id", type=int)
         quantity = request.form.get("quantity", type=int)
@@ -617,7 +1021,6 @@ def create_app(config_name=None):
             (phc_id, medicine_id, abs(diff), prev_qty, quantity, session["user_id"], notes or "Physical inventory count adjustment")
         )
 
-        # Recalculate and synchronize alerts
         pred = calculate_stock_prediction(
             quantity, inv["safety_stock"], inv["avg_daily_consumption"], inv["replenishment_lead_time_days"]
         )
@@ -663,12 +1066,11 @@ def create_app(config_name=None):
     @app.route("/phc/transfers")
     @phc_staff_required
     def phc_transfers():
-        """Staff emergency transfers dashboard (both incoming and outgoing)."""
+        """Staff emergency transfers dashboard."""
         phc_id = session["phc_id"]
         db = get_db()
         phc = db.execute("SELECT * FROM phcs WHERE id = ?", (phc_id,)).fetchone()
 
-        # Outgoing (where our PHC requested stock)
         outgoing = db.execute(
             """
             SELECT 
@@ -683,7 +1085,6 @@ def create_app(config_name=None):
             (phc_id,)
         ).fetchall()
 
-        # Incoming (where another PHC requested stock from us)
         incoming = db.execute(
             """
             SELECT 
@@ -791,7 +1192,6 @@ def create_app(config_name=None):
         user_phc_id = session["phc_id"]
         db = get_db()
 
-        # Atomic Transaction
         transfer = db.execute("SELECT * FROM transfer_requests WHERE id = ?", (transfer_id,)).fetchone()
         if not transfer:
             flash("Transfer record not found.", "danger")
@@ -807,7 +1207,6 @@ def create_app(config_name=None):
 
         qty_to_dispatch = transfer["approved_quantity"] or transfer["requested_quantity"]
 
-        # Deduct from supplying PHC inventory
         sup_inv = db.execute(
             "SELECT * FROM inventory WHERE phc_id = ? AND medicine_id = ?",
             (user_phc_id, transfer["medicine_id"])
@@ -842,7 +1241,6 @@ def create_app(config_name=None):
             (session["user_id"], transfer_id)
         )
 
-        # Recalculate supplier predictions & alerts
         pred = calculate_stock_prediction(
             new_qty, sup_inv["safety_stock"], sup_inv["avg_daily_consumption"], sup_inv["replenishment_lead_time_days"]
         )
@@ -876,7 +1274,6 @@ def create_app(config_name=None):
 
         qty_received = transfer["approved_quantity"] or transfer["requested_quantity"]
 
-        # Increment receiving PHC inventory atomically
         rec_inv = db.execute(
             "SELECT * FROM inventory WHERE phc_id = ? AND medicine_id = ?",
             (user_phc_id, transfer["medicine_id"])
@@ -921,7 +1318,6 @@ def create_app(config_name=None):
             (session["user_id"], transfer_id)
         )
 
-        # Recalculate receiver predictions & resolve alerts if replenished
         pred = calculate_stock_prediction(new_qty, safety, usage, lead)
         sync_inventory_alerts(db, user_phc_id, transfer["medicine_id"], pred)
 
@@ -965,10 +1361,80 @@ def create_app(config_name=None):
             active_page="deliveries"
         )
 
+    @app.route("/phc/deliveries/accept/<int:delivery_id>", methods=["POST"])
+    @phc_staff_required
+    def phc_delivery_accept(delivery_id):
+        """Pharmacist accepts a pending delivery request."""
+        phc_id = session["phc_id"]
+        db = get_db()
+
+        deliv = db.execute("SELECT * FROM delivery_requests WHERE id = ? AND phc_id = ?", (delivery_id, phc_id)).fetchone()
+        if not deliv:
+            flash("Delivery request not found.", "danger")
+            return redirect(url_for("phc_deliveries"))
+
+        if deliv["status"] != "Pending":
+            flash(f"Cannot accept order in '{deliv['status']}' status.", "warning")
+            return redirect(url_for("phc_deliveries"))
+
+        db.execute(
+            "UPDATE delivery_requests SET status = 'Accepted', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (delivery_id,)
+        )
+        db.commit()
+
+        log_audit("DELIVERY_ACCEPTED", "delivery_requests", delivery_id, f"Accepted delivery {deliv['tracking_code']}")
+        flash(f"Delivery request #{deliv['tracking_code']} accepted.", "success")
+        return redirect(url_for("phc_deliveries"))
+
+    @app.route("/phc/deliveries/reject/<int:delivery_id>", methods=["POST"])
+    @phc_staff_required
+    def phc_delivery_reject(delivery_id):
+        """Pharmacist rejects a delivery request and releases reserved stock back into inventory."""
+        phc_id = session["phc_id"]
+        notes = request.form.get("notes", "Rejected by dispensary staff").strip()
+        db = get_db()
+
+        deliv = db.execute("SELECT * FROM delivery_requests WHERE id = ? AND phc_id = ?", (delivery_id, phc_id)).fetchone()
+        if not deliv:
+            flash("Delivery request not found.", "danger")
+            return redirect(url_for("phc_deliveries"))
+
+        if deliv["status"] in ("Rejected", "Cancelled"):
+            flash("Order is already rejected or cancelled.", "warning")
+            return redirect(url_for("phc_deliveries"))
+
+        # Release stock back to inventory if not already delivered
+        if deliv["status"] != "Delivered":
+            inv = db.execute("SELECT * FROM inventory WHERE phc_id = ? AND medicine_id = ?", (phc_id, deliv["medicine_id"])).fetchone()
+            if inv:
+                prev_qty = inv["usable_quantity"]
+                new_qty = prev_qty + deliv["quantity"]
+                db.execute("UPDATE inventory SET usable_quantity = ?, last_updated = CURRENT_TIMESTAMP WHERE id = ?", (new_qty, inv["id"]))
+                db.execute(
+                    """
+                    INSERT INTO stock_transactions (phc_id, medicine_id, transaction_type, quantity, previous_quantity, new_quantity, user_id, notes)
+                    VALUES (?, ?, 'received', ?, ?, ?, ?, ?)
+                    """,
+                    (phc_id, deliv["medicine_id"], deliv["quantity"], prev_qty, new_qty, session["user_id"], f"Delivery {deliv['tracking_code']} rejected (restocked)")
+                )
+                pred = calculate_stock_prediction(new_qty, inv["safety_stock"], inv["avg_daily_consumption"], inv["replenishment_lead_time_days"])
+                sync_inventory_alerts(db, phc_id, deliv["medicine_id"], pred)
+
+        db.execute(
+            "UPDATE delivery_requests SET status = 'Rejected', notes = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+            (notes, delivery_id)
+        )
+        db.commit()
+
+        log_audit("DELIVERY_REJECTED", "delivery_requests", delivery_id, f"Rejected delivery {deliv['tracking_code']}. Reason: {notes}")
+        flash(f"Delivery request #{deliv['tracking_code']} rejected and stock returned to inventory.", "warning")
+        return redirect(url_for("phc_deliveries"))
+
     @app.route("/phc/deliveries/update/<int:delivery_id>", methods=["POST"])
     @phc_staff_required
     def phc_delivery_update(delivery_id):
-        """Update delivery request status (Pending, Approved, Out for delivery, Delivered, Rejected)."""
+        """Update delivery request status (Pending, Accepted, Preparing, Out for delivery, Delivered, Rejected)."""
         phc_id = session["phc_id"]
         status = request.form.get("status", "").strip()
         notes = request.form.get("notes", "").strip()
@@ -979,10 +1445,27 @@ def create_app(config_name=None):
             flash("Delivery request not found or does not belong to your health centre.", "danger")
             return redirect(url_for("phc_deliveries"))
 
-        valid_statuses = ("Pending", "Approved", "Assigned", "Out for delivery", "Delivered", "Rejected")
+        valid_statuses = ("Pending", "Accepted", "Approved", "Assigned", "Preparing", "Out for delivery", "Delivered", "Rejected")
         if status not in valid_statuses:
             flash("Invalid delivery status transition.", "danger")
             return redirect(url_for("phc_deliveries"))
+
+        # If transitioning to Rejected, release stock
+        if status == "Rejected" and deliv["status"] not in ("Rejected", "Cancelled", "Delivered"):
+            inv = db.execute("SELECT * FROM inventory WHERE phc_id = ? AND medicine_id = ?", (phc_id, deliv["medicine_id"])).fetchone()
+            if inv:
+                prev_qty = inv["usable_quantity"]
+                new_qty = prev_qty + deliv["quantity"]
+                db.execute("UPDATE inventory SET usable_quantity = ?, last_updated = CURRENT_TIMESTAMP WHERE id = ?", (new_qty, inv["id"]))
+                db.execute(
+                    """
+                    INSERT INTO stock_transactions (phc_id, medicine_id, transaction_type, quantity, previous_quantity, new_quantity, user_id, notes)
+                    VALUES (?, ?, 'received', ?, ?, ?, ?, ?)
+                    """,
+                    (phc_id, deliv["medicine_id"], deliv["quantity"], prev_qty, new_qty, session["user_id"], f"Delivery {deliv['tracking_code']} rejected via update (restocked)")
+                )
+                pred = calculate_stock_prediction(new_qty, inv["safety_stock"], inv["avg_daily_consumption"], inv["replenishment_lead_time_days"])
+                sync_inventory_alerts(db, phc_id, deliv["medicine_id"], pred)
 
         db.execute(
             """
@@ -990,13 +1473,70 @@ def create_app(config_name=None):
             SET status = ?, notes = ?, updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
             """,
-            (status, notes, delivery_id)
+            (status, notes or deliv["notes"], delivery_id)
         )
         db.commit()
 
         log_audit("DELIVERY_STATUS_UPDATED", "delivery_requests", delivery_id, f"Status updated to '{status}'. Notes: {notes}")
         flash(f"Delivery request #{deliv['tracking_code']} status updated to '{status}'.", "success")
         return redirect(url_for("phc_deliveries"))
+
+    @app.route("/phc/replenishment")
+    @phc_staff_required
+    def phc_replenishment():
+        """View and submit provider stock replenishment requests to District Administrator."""
+        phc_id = session["phc_id"]
+        db = get_db()
+        phc = db.execute("SELECT * FROM phcs WHERE id = ?", (phc_id,)).fetchone()
+
+        all_medicines = db.execute("SELECT id, name, dosage_form, unit FROM medicines WHERE active_status = 1 ORDER BY name").fetchall()
+
+        requests = db.execute(
+            """
+            SELECT 
+                r.*, m.name AS medicine_name, m.dosage_form, m.unit
+            FROM provider_stock_requests r
+            JOIN medicines m ON m.id = r.medicine_id
+            WHERE r.phc_id = ?
+            ORDER BY r.created_at DESC
+            """,
+            (phc_id,)
+        ).fetchall()
+
+        return render_template(
+            "phc_replenishment.html",
+            phc=phc,
+            all_medicines=all_medicines,
+            requests=requests,
+            active_page="phc_replenishment"
+        )
+
+    @app.route("/phc/replenishment/submit", methods=["POST"])
+    @phc_staff_required
+    def phc_replenishment_submit():
+        """Submit a provider stock replenishment request to District Administrator."""
+        phc_id = session["phc_id"]
+        medicine_id = request.form.get("medicine_id", type=int)
+        requested_quantity = request.form.get("requested_quantity", type=int)
+        reason = request.form.get("reason", "").strip()
+
+        if not (medicine_id and requested_quantity and requested_quantity > 0 and reason):
+            flash("Please provide all required details for the replenishment request.", "danger")
+            return redirect(url_for("phc_replenishment"))
+
+        db = get_db()
+        db.execute(
+            """
+            INSERT INTO provider_stock_requests (phc_id, medicine_id, requested_quantity, reason, status)
+            VALUES (?, ?, ?, ?, 'pending')
+            """,
+            (phc_id, medicine_id, requested_quantity, reason)
+        )
+        db.commit()
+
+        log_audit("REPLENISHMENT_REQUESTED", "provider_stock_requests", None, f"PHC #{phc_id} requested {requested_quantity} of med #{medicine_id}")
+        flash(f"Replenishment request for {requested_quantity} units submitted to District Administrator.", "success")
+        return redirect(url_for("phc_replenishment"))
 
     # ---------------------------------------------------------
     # View C: District Administrator Portal Routes
@@ -1009,10 +1549,9 @@ def create_app(config_name=None):
 
         total_phcs = db.execute("SELECT COUNT(*) FROM phcs").fetchone()[0]
         approved_phcs = db.execute("SELECT COUNT(*) FROM phcs WHERE approval_status = 'approved'").fetchone()[0]
-        pending_phcs = total_phcs - approved_phcs
+        pending_phcs = db.execute("SELECT COUNT(*) FROM phcs WHERE approval_status = 'pending'").fetchone()[0]
         total_meds = db.execute("SELECT COUNT(*) FROM medicines WHERE active_status = 1").fetchone()[0]
 
-        # Calculate district-wide risk breakdown across all inventory rows
         all_inv = db.execute(
             """
             SELECT i.usable_quantity, i.safety_stock, i.avg_daily_consumption, i.replenishment_lead_time_days
@@ -1042,6 +1581,7 @@ def create_app(config_name=None):
 
         pending_transfers = db.execute("SELECT COUNT(*) FROM transfer_requests WHERE status = 'pending'").fetchone()[0]
         completed_transfers = db.execute("SELECT COUNT(*) FROM transfer_requests WHERE status = 'received'").fetchone()[0]
+        pending_requests = db.execute("SELECT COUNT(*) FROM provider_stock_requests WHERE status = 'pending'").fetchone()[0]
 
         stats = {
             "total_phcs": total_phcs,
@@ -1054,9 +1594,24 @@ def create_app(config_name=None):
             "safe_count": safe_c,
             "pending_transfers": pending_transfers,
             "completed_transfers": completed_transfers,
+            "pending_requests": pending_requests,
         }
 
-        # Pending transfers list for quick action
+        # Pending Provider Replenishment Requests
+        pending_provider_requests = db.execute(
+            """
+            SELECT 
+                r.*, m.name AS medicine_name, p.name AS phc_name
+            FROM provider_stock_requests r
+            JOIN medicines m ON m.id = r.medicine_id
+            JOIN phcs p ON p.id = r.phc_id
+            WHERE r.status = 'pending'
+            ORDER BY r.created_at DESC
+            LIMIT 5
+            """
+        ).fetchall()
+
+        # Pending transfers list
         pending_transfers_list = db.execute(
             """
             SELECT 
@@ -1094,6 +1649,7 @@ def create_app(config_name=None):
         return render_template(
             "admin_dashboard.html",
             stats=stats,
+            pending_provider_requests=pending_provider_requests,
             pending_transfers_list=pending_transfers_list,
             active_alerts=active_alerts,
             active_page="admin_dashboard"
@@ -1102,7 +1658,7 @@ def create_app(config_name=None):
     @app.route("/admin/phcs")
     @admin_required
     def admin_phcs():
-        """PHC Registry, approval actions, and coordinate mapping."""
+        """PHC Registry, approval actions, and status management."""
         status = request.args.get("status", "").strip()
         db = get_db()
         query = """
@@ -1126,7 +1682,7 @@ def create_app(config_name=None):
     def admin_phc_approve(phc_id):
         """Approve a primary health centre for full network participation."""
         db = get_db()
-        db.execute("UPDATE phcs SET approval_status = 'approved' WHERE id = ?", (phc_id,))
+        db.execute("UPDATE phcs SET approval_status = 'approved', active_status = 1 WHERE id = ?", (phc_id,))
         db.commit()
         log_audit("PHC_APPROVED", "phcs", phc_id, f"Approved PHC #{phc_id} for district stock operations.")
         flash("Primary Health Centre approved successfully.", "success")
@@ -1137,11 +1693,168 @@ def create_app(config_name=None):
     def admin_phc_reject(phc_id):
         """Reject an application from a primary health centre."""
         db = get_db()
-        db.execute("UPDATE phcs SET approval_status = 'rejected' WHERE id = ?", (phc_id,))
+        db.execute("UPDATE phcs SET approval_status = 'rejected', active_status = 0 WHERE id = ?", (phc_id,))
         db.commit()
         log_audit("PHC_REJECTED", "phcs", phc_id, f"Rejected PHC #{phc_id}.")
         flash("Primary Health Centre registration rejected.", "warning")
         return redirect(url_for("admin_phcs"))
+
+    @app.route("/admin/phcs/suspend/<int:phc_id>", methods=["POST"])
+    @admin_required
+    def admin_phc_suspend(phc_id):
+        """Suspend an approved primary health centre."""
+        db = get_db()
+        db.execute("UPDATE phcs SET approval_status = 'suspended', active_status = 0 WHERE id = ?", (phc_id,))
+        db.commit()
+        log_audit("PHC_SUSPENDED", "phcs", phc_id, f"Suspended PHC #{phc_id}.")
+        flash("Primary Health Centre suspended.", "warning")
+        return redirect(url_for("admin_phcs"))
+
+    @app.route("/admin/phcs/reactivate/<int:phc_id>", methods=["POST"])
+    @admin_required
+    def admin_phc_reactivate(phc_id):
+        """Reactivate a suspended primary health centre."""
+        db = get_db()
+        db.execute("UPDATE phcs SET approval_status = 'approved', active_status = 1 WHERE id = ?", (phc_id,))
+        db.commit()
+        log_audit("PHC_REACTIVATED", "phcs", phc_id, f"Reactivated PHC #{phc_id}.")
+        flash("Primary Health Centre reactivated successfully.", "success")
+        return redirect(url_for("admin_phcs"))
+
+    @app.route("/admin/provider-requests")
+    @admin_required
+    def admin_provider_requests():
+        """Review and manage stock replenishment requests from different registered providers."""
+        phc_id = request.args.get("phc_id", type=int)
+        med_id = request.args.get("medicine_id", type=int)
+        status = request.args.get("status", "").strip()
+
+        db = get_db()
+        all_phcs = db.execute("SELECT id, name FROM phcs WHERE approval_status = 'approved' ORDER BY name").fetchall()
+        all_meds = db.execute("SELECT id, name FROM medicines WHERE active_status = 1 ORDER BY name").fetchall()
+
+        query = """
+            SELECT 
+                r.*, m.name AS medicine_name, p.name AS phc_name, p.location AS phc_location
+            FROM provider_stock_requests r
+            JOIN medicines m ON m.id = r.medicine_id
+            JOIN phcs p ON p.id = r.phc_id
+            WHERE 1=1
+        """
+        params = []
+        if phc_id:
+            query += " AND r.phc_id = ?"
+            params.append(phc_id)
+        if med_id:
+            query += " AND r.medicine_id = ?"
+            params.append(med_id)
+        if status:
+            query += " AND r.status = ?"
+            params.append(status)
+
+        query += " ORDER BY r.created_at DESC"
+        requests = db.execute(query, params).fetchall()
+
+        return render_template(
+            "admin_provider_requests.html",
+            requests=requests,
+            all_phcs=all_phcs,
+            all_medicines=all_meds,
+            selected_phc_id=phc_id,
+            selected_med_id=med_id,
+            selected_status=status,
+            active_page="admin_provider_requests"
+        )
+
+    @app.route("/admin/provider-requests/approve/<int:request_id>", methods=["POST"])
+    @admin_required
+    def admin_provider_request_approve(request_id):
+        """District Administrator authorizes a provider replenishment request."""
+        admin_notes = request.form.get("admin_notes", "Approved for central replenishment").strip()
+        db = get_db()
+        req = db.execute("SELECT * FROM provider_stock_requests WHERE id = ?", (request_id,)).fetchone()
+        if not req:
+            flash("Replenishment request not found.", "danger")
+            return redirect(url_for("admin_provider_requests"))
+
+        db.execute(
+            """
+            UPDATE provider_stock_requests 
+            SET status = 'approved', admin_notes = ?, reviewed_by_user_id = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (admin_notes, session["user_id"], request_id)
+        )
+        db.commit()
+
+        log_audit("REPLENISHMENT_APPROVED", "provider_stock_requests", request_id, f"Approved request #{request_id}")
+        flash(f"Replenishment request #REQ-{request_id} approved.", "success")
+        return redirect(url_for("admin_provider_requests"))
+
+    @app.route("/admin/provider-requests/reject/<int:request_id>", methods=["POST"])
+    @admin_required
+    def admin_provider_request_reject(request_id):
+        """District Administrator rejects a provider replenishment request."""
+        admin_notes = request.form.get("admin_notes", "Declined by District Administrator").strip()
+        db = get_db()
+        req = db.execute("SELECT * FROM provider_stock_requests WHERE id = ?", (request_id,)).fetchone()
+        if not req:
+            flash("Replenishment request not found.", "danger")
+            return redirect(url_for("admin_provider_requests"))
+
+        db.execute(
+            """
+            UPDATE provider_stock_requests 
+            SET status = 'rejected', admin_notes = ?, reviewed_by_user_id = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            """,
+            (admin_notes, session["user_id"], request_id)
+        )
+        db.commit()
+
+        log_audit("REPLENISHMENT_REJECTED", "provider_stock_requests", request_id, f"Rejected request #{request_id}")
+        flash(f"Replenishment request #REQ-{request_id} rejected.", "warning")
+        return redirect(url_for("admin_provider_requests"))
+
+    @app.route("/admin/deliveries")
+    @admin_required
+    def admin_deliveries():
+        """District-wide patient delivery monitoring (privacy-preserving)."""
+        phc_id = request.args.get("phc_id", type=int)
+        status = request.args.get("status", "").strip()
+
+        db = get_db()
+        all_phcs = db.execute("SELECT id, name FROM phcs WHERE approval_status = 'approved' ORDER BY name").fetchall()
+
+        query = """
+            SELECT 
+                d.id, d.tracking_code, d.quantity, d.status, d.created_at, d.updated_at,
+                m.name AS medicine_name,
+                p.name AS phc_name
+            FROM delivery_requests d
+            JOIN medicines m ON m.id = d.medicine_id
+            JOIN phcs p ON p.id = d.phc_id
+            WHERE 1=1
+        """
+        params = []
+        if phc_id:
+            query += " AND d.phc_id = ?"
+            params.append(phc_id)
+        if status:
+            query += " AND d.status = ?"
+            params.append(status)
+
+        query += " ORDER BY d.created_at DESC"
+        deliveries = db.execute(query, params).fetchall()
+
+        return render_template(
+            "admin_deliveries.html",
+            deliveries=deliveries,
+            all_phcs=all_phcs,
+            selected_phc_id=phc_id,
+            selected_status=status,
+            active_page="admin_deliveries"
+        )
 
     @app.route("/admin/stock-monitor")
     @admin_required
@@ -1251,7 +1964,6 @@ def create_app(config_name=None):
 
         qty = approved_qty if approved_qty and approved_qty > 0 else t["requested_quantity"]
 
-        # Safety Check: Verify supplying PHC has enough surplus above safety stock
         sup_inv = db.execute(
             "SELECT usable_quantity, safety_stock FROM inventory WHERE phc_id = ? AND medicine_id = ?",
             (t["supplying_phc_id"], t["medicine_id"])
@@ -1311,7 +2023,6 @@ def create_app(config_name=None):
         """District analytics, vulnerability rankings, and summary aggregates."""
         db = get_db()
 
-        # Vulnerable PHCs ranking (highest count of critical/high risk items)
         phcs = db.execute("SELECT id, name, location FROM phcs WHERE approval_status = 'approved'").fetchall()
         vulnerable_phcs = []
         for p in phcs:
@@ -1338,7 +2049,6 @@ def create_app(config_name=None):
             })
         vulnerable_phcs.sort(key=lambda x: x["total_alerts"], reverse=True)
 
-        # Most depleted medicines
         med_rows = db.execute("SELECT id, name, category, unit FROM medicines WHERE active_status = 1").fetchall()
         top_depleted = []
         for m in med_rows:
@@ -1364,7 +2074,6 @@ def create_app(config_name=None):
                 })
         top_depleted.sort(key=lambda x: x["shortage_phcs"], reverse=True)
 
-        # Transfer velocity stats
         tot_transfers = db.execute("SELECT COUNT(*) FROM transfer_requests").fetchone()[0]
         comp_transfers = db.execute("SELECT COUNT(*) FROM transfer_requests WHERE status = 'received'").fetchone()[0]
         units_moved = db.execute("SELECT SUM(approved_quantity) FROM transfer_requests WHERE status IN ('dispatched', 'received')").fetchone()[0]

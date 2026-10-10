@@ -1,98 +1,77 @@
 {% extends "base.html" %}
 
-{% block title %}Track Delivery Request | Smart PHC{% endblock %}
+{% block title %}Track Order — Smart PHC{% endblock %}
 
 {% block content %}
 <div class="row justify-content-center">
   <div class="col-lg-7 col-md-9">
-    <div class="page-header text-center">
-      <h1><i class="bi bi-geo-alt-fill text-teal me-2"></i>Track Delivery Request</h1>
-      <p>Enter your unique tracking reference code to check current processing status.</p>
+    <div class="page-header">
+      <h1>Track Medicine Delivery</h1>
+      <p>Enter your order tracking reference to check current status.</p>
     </div>
 
     <!-- Search Box -->
     <div class="card card-phc mb-4">
-      <div class="card-body p-4">
+      <div class="card-body p-3">
         <form action="{{ url_for('patient_track') }}" method="GET" class="d-flex gap-2">
-          <div class="input-group input-group-lg">
-            <span class="input-group-text bg-light"><i class="bi bi-qr-code-scan"></i></span>
-            <input type="text" name="code" value="{{ tracking_code or '' }}" class="form-control" placeholder="e.g. TRK-GV-8910" required>
-          </div>
-          <button type="submit" class="btn btn-phc-primary px-4 fw-bold">Track</button>
+          <input type="text" name="code" value="{{ tracking_code or '' }}" class="form-control" placeholder="Enter tracking reference (e.g. TRK-XXXX)" required autofocus>
+          <button type="submit" class="btn btn-phc-primary px-4 fw-semibold">Track</button>
         </form>
-        <div class="form-text mt-2 text-center">
-          Example tracking codes from seed data: <code>TRK-GV-8910</code>, <code>TRK-GV-8911</code>, <code>TRK-HC-4402</code>
-        </div>
       </div>
     </div>
 
     <!-- Tracking Result Card -->
     {% if delivery %}
-      <div class="card card-phc shadow">
+      <div class="card card-phc shadow-sm">
         <div class="card-header d-flex justify-content-between align-items-center">
-          <span class="fw-bold"><i class="bi bi-box2 me-2"></i>Reference: {{ delivery.tracking_code }}</span>
+          <span class="fw-semibold">Reference: <code>{{ delivery.tracking_code }}</code></span>
           <div>
             {% if delivery.status == 'Delivered' %}
-              <span class="badge bg-success fs-6"><i class="bi bi-check-circle me-1"></i> Delivered</span>
-            {% elif delivery.status == 'Out for delivery' %}
-              <span class="badge bg-info text-dark fs-6"><i class="bi bi-bicycle me-1"></i> Out for Delivery</span>
-            {% elif delivery.status == 'Approved' %}
-              <span class="badge bg-primary fs-6"><i class="bi bi-patch-check me-1"></i> Approved</span>
-            {% elif delivery.status == 'Assigned' %}
-              <span class="badge bg-secondary fs-6"><i class="bi bi-person-badge me-1"></i> Worker Assigned</span>
+              <span class="badge-risk safe">Delivered</span>
+            {% elif delivery.status in ['Out for Delivery', 'Out for delivery'] %}
+              <span class="badge-risk medium">Out for Delivery</span>
+            {% elif delivery.status == 'Preparing' %}
+              <span class="badge-risk medium">Preparing</span>
+            {% elif delivery.status in ['Accepted', 'Approved'] %}
+              <span class="badge-risk safe">Accepted</span>
             {% elif delivery.status == 'Rejected' %}
-              <span class="badge bg-danger fs-6"><i class="bi bi-x-circle me-1"></i> Request Declined</span>
+              <span class="badge-risk critical">Rejected</span>
+            {% elif delivery.status == 'Cancelled' %}
+              <span class="badge bg-secondary">Cancelled</span>
             {% else %}
-              <span class="badge bg-warning text-dark fs-6"><i class="bi bi-hourglass-split me-1"></i> Pending Verification</span>
+              <span class="badge-risk high">Pending</span>
             {% endif %}
           </div>
         </div>
         <div class="card-body p-4">
           <div class="row g-3 mb-3">
             <div class="col-sm-6">
-              <label class="text-muted small fw-semibold">Medicine Requested</label>
-              <div class="fs-5 fw-bold text-dark">{{ delivery.medicine_name }}</div>
-              <div class="small text-muted">{{ delivery.quantity }} units requested</div>
+              <div class="small text-muted">Medicine</div>
+              <div class="fs-6 fw-bold text-dark">{{ delivery.medicine_name }}</div>
+              <div class="small text-muted">{{ delivery.quantity }} units</div>
             </div>
             <div class="col-sm-6">
-              <label class="text-muted small fw-semibold">Processing Health Centre</label>
+              <div class="small text-muted">Primary Health Centre</div>
               <div class="fs-6 fw-bold text-dark">{{ delivery.phc_name }}</div>
-              <div class="small">
-                <i class="bi bi-telephone text-primary me-1"></i>
-                <a href="tel:{{ delivery.contact_phone }}" class="text-decoration-none">{{ delivery.contact_phone }}</a>
-              </div>
+              <div class="small text-muted">{{ delivery.contact_phone }}</div>
             </div>
           </div>
 
-          <div class="border-top pt-3 mt-3">
-            <div class="d-flex justify-content-between text-muted small mb-2">
-              <span>Date Submitted:</span>
+          <div class="border-top pt-3">
+            <div class="d-flex justify-content-between small text-muted mb-2">
+              <span>Order Date:</span>
               <span class="text-dark">{{ delivery.created_at|format_dt }}</span>
             </div>
-            <div class="d-flex justify-content-between text-muted small mb-2">
+            <div class="d-flex justify-content-between small text-muted mb-2">
               <span>Last Status Update:</span>
               <span class="text-dark">{{ (delivery.updated_at or delivery.created_at)|format_dt }}</span>
             </div>
-            {% if delivery.notes %}
-              <div class="bg-light p-3 rounded mt-3 small">
-                <span class="fw-semibold text-secondary d-block mb-1"><i class="bi bi-chat-left-text me-1"></i>Official Notes:</span>
-                {{ delivery.notes }}
-              </div>
-            {% endif %}
-          </div>
-
-          <!-- Privacy Protection Banner -->
-          <div class="alert alert-secondary small mt-4 mb-0 text-muted">
-            <i class="bi bi-shield-lock-fill me-1 text-primary"></i> 
-            Privacy Protected: Personal patient contact details and destination address are masked to safeguard patient confidentiality.
           </div>
         </div>
       </div>
     {% elif tracking_code %}
-      <div class="card card-phc p-4 text-center">
-        <i class="bi bi-search text-secondary fs-1 mb-2"></i>
-        <h5 class="fw-bold">No delivery request found</h5>
-        <p class="text-muted small">We could not locate any delivery record with code <strong>{{ tracking_code }}</strong>. Please check the code received during request submission.</p>
+      <div class="card card-phc p-4 text-center text-muted">
+        <p class="mb-0">No order found with reference <strong>{{ tracking_code }}</strong>. Please check your tracking code.</p>
       </div>
     {% endif %}
   </div>

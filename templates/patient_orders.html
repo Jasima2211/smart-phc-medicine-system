@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block title %}My Orders — Smart PHC{% endblock %}
+
+{% block content %}
+<div class="page-header d-flex flex-wrap align-items-center justify-content-between gap-3">
+  <div>
+    <h1>My Medicine Orders</h1>
+    <p>Track your medicine delivery requests and current fulfillment status.</p>
+  </div>
+  <div>
+    <a href="{{ url_for('patient_search') }}" class="btn btn-phc-primary btn-sm">
+      Search Medicines
+    </a>
+  </div>
+</div>
+
+<div class="card card-phc shadow-sm">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span>Order History ({{ orders|length }})</span>
+  </div>
+  <div class="card-body p-0">
+    {% if orders %}
+      <div class="table-responsive">
+        <table class="table table-phc">
+          <thead>
+            <tr>
+              <th>Tracking Code</th>
+              <th>Medicine</th>
+              <th>Quantity</th>
+              <th>Health Centre</th>
+              <th>Order Date</th>
+              <th>Status</th>
+              <th class="text-end">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for o in orders %}
+              <tr>
+                <td><code>{{ o.tracking_code }}</code></td>
+                <td><strong>{{ o.medicine_name }}</strong></td>
+                <td>{{ o.quantity }} units</td>
+                <td>{{ o.phc_name }}</td>
+                <td><small class="text-muted">{{ o.created_at|format_dt }}</small></td>
+                <td>
+                  {% if o.status == 'Delivered' %}
+                    <span class="badge-risk safe">Delivered</span>
+                  {% elif o.status in ['Out for Delivery', 'Out for delivery'] %}
+                    <span class="badge-risk medium">Out for Delivery</span>
+                  {% elif o.status == 'Preparing' %}
+                    <span class="badge-risk medium">Preparing</span>
+                  {% elif o.status in ['Accepted', 'Approved'] %}
+                    <span class="badge-risk safe">Accepted</span>
+                  {% elif o.status == 'Rejected' %}
+                    <span class="badge-risk critical">Rejected</span>
+                  {% elif o.status == 'Cancelled' %}
+                    <span class="badge bg-secondary">Cancelled</span>
+                  {% else %}
+                    <span class="badge-risk high">Pending</span>
+                  {% endif %}
+                </td>
+                <td class="text-end">
+                  <a href="{{ url_for('patient_track', code=o.tracking_code) }}" class="btn btn-outline-secondary btn-sm">
+                    View
+                  </a>
+                  {% if o.status == 'Pending' %}
+                    <form action="{{ url_for('patient_order_cancel', order_id=o.id) }}" method="POST" class="d-inline ms-1" onsubmit="return confirm('Cancel this delivery order?');">
+                      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                      <button type="submit" class="btn btn-outline-danger btn-sm">Cancel</button>
+                    </form>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="p-4 text-center text-muted">
+        <p class="mb-0">You have not placed any medicine orders yet.</p>
+        <a href="{{ url_for('patient_search') }}" class="btn btn-phc-primary btn-sm mt-3">Browse Medicines</a>
+      </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
